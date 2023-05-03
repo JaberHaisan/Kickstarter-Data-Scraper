@@ -1,7 +1,7 @@
-import csv
 from datetime import datetime
 
 from bs4 import BeautifulSoup
+import pandas as pd
 
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
@@ -136,8 +136,7 @@ if __name__ == "__main__":
     data_1 = extract_campaign_data(file_path_1)
     data_2 = extract_campaign_data(file_path_2)
 
-    # Write results to a csv file.
-    with open('results.csv', 'w') as f: 
-        w = csv.DictWriter(f, data_1.keys())
-        w.writeheader()
-        w.writerows([data_1, data_2])
+    data = [data_1, data_2]
+    df = pd.DataFrame(data)
+
+    df.to_csv('results.csv')
