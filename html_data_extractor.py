@@ -20,8 +20,8 @@ def extract_campaign_data(file_path):
     data["time_accessed"] = time
 
     # Creator, Title and Blurb
-    description_elem = soup.select('meta[name="description"]')[0]
-    lines = description_elem["content"].splitlines()
+    meta_elem = soup.select('meta[name="description"]')[0]
+    lines = meta_elem["content"].splitlines()
     creator, title = lines[0].split(" is raising funds for ")
     title = title.strip()
     blurb = lines[-1].strip()
@@ -119,19 +119,25 @@ def extract_campaign_data(file_path):
     else:
         data["faq_num"] = 0
 
+    # Description.
+    description_elem = soup.select('div[class="full-description js-full-description responsive-media formatted-lists"]')
+    description = description_elem[0].getText().strip()
+    data["description"] = description
+
     return data
 
 if __name__ == "__main__":
     # No faq
-    # file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
+    file_path_1 = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
     
     # Has faq. No blurb, creator, backer, goal, date, category, location, projects_num
-    file_path = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-quirky-characters/100-quirky-characters_20190201-150330.html"
+    file_path_2 = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-quirky-characters/100-quirky-characters_20190201-150330.html"
     
-    data = extract_campaign_data(file_path)
+    data_1 = extract_campaign_data(file_path_1)
+    data_2 = extract_campaign_data(file_path_2)
 
     # Write results to a csv file.
     with open('results.csv', 'w') as f: 
-        w = csv.DictWriter(f, data.keys())
+        w = csv.DictWriter(f, data_1.keys())
         w.writeheader()
-        w.writerow(data)
+        w.writerows([data_1, data_2])
