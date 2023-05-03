@@ -3,7 +3,11 @@ import zipfile
 
 def extract_html_files(path, data_folder):
     """Extracts all html files in the zipped folders in path
-    to the given data folder (created if it doesn't exist)."""
+    to the given data folder (created if it doesn't exist) and
+    returns a list of the file paths.
+
+    path [str] - Path to zip files.
+    data_folder [str] - Path to folder to store unzipped data."""
     data_folder_path = os.path.join(path, data_folder)
 
     # # Make data folder if it doesn't exist.
@@ -19,12 +23,19 @@ def extract_html_files(path, data_folder):
         with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
             zip_ref.extractall(data_folder_path)
 
+    # Files to ignore.
+    ignore_set = {"community", "faqs", "comments", "updates"}
+
     # Get paths of all html files in the data folder.
     html_files = []
     for (root,dirs,files) in os.walk(data_folder_path):
         for file in files:
             if file.endswith(".html"):
-                html_files.append(os.path.join(root, file))
+                # Ignore certain files.
+                if file.split("_")[1] not in ignore_set:
+                    html_files.append(os.path.join(root, file))
+    
+    return html_files
 
 if __name__ == "__main__":
     # Path to zip files.
@@ -33,4 +44,4 @@ if __name__ == "__main__":
     # Folder which will contain unzipped data.
     data_folder = "Unzipped"
 
-    extract_html_files(path, data_folder)
+    html_files = extract_html_files(path, data_folder)
