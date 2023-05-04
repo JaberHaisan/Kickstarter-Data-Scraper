@@ -1,7 +1,45 @@
 from datetime import datetime
+import os
+import zipfile
 
 from bs4 import BeautifulSoup
 import pandas as pd
+
+def extract_html_files(path, data_folder):
+    """Extracts all html files in the zipped folders in path
+    to the given data folder (created if it doesn't exist) and
+    returns a list of the file paths.
+
+    path [str] - Path to zip files.
+    data_folder [str] - Path to folder to store unzipped data."""
+    data_folder_path = os.path.join(path, data_folder)
+
+    # # Make data folder if it doesn't exist.
+    # os.makedirs(data_folder_path, exist_ok=True)
+
+    # Find all zip files in current path and extract them to data_folder.
+    zip_files = []
+    for file in os.listdir(path):
+        if file.endswith(".zip"):
+            zip_files.append(file)
+
+    for zip_file in zip_files:
+        with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
+            zip_ref.extractall(data_folder_path)
+
+    # Files to ignore.
+    ignore_set = {"community", "faqs", "comments", "updates"}
+
+    # Get paths of all html files in the data folder.
+    html_files = []
+    for (root,dirs,files) in os.walk(data_folder_path):
+        for file in files:
+            if file.endswith(".html"):
+                # Ignore certain files.
+                if file.split("_")[1] not in ignore_set:
+                    html_files.append(os.path.join(root, file))
+    
+    return html_files
 
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
@@ -120,23 +158,49 @@ def extract_campaign_data(file_path):
         data["faq_num"] = 0
 
     # Description.
-    description_elem = soup.select('div[class="full-description js-full-description responsive-media formatted-lists"]')
-    description = description_elem[0].getText().strip()
-    data["description"] = description
+    try:
+        description_elem = soup.select('div[class="full-description js-full-description responsive-media formatted-lists"]')
+        description = description_elem[0].getText().strip()
+    # Desciption missing.
+    except IndexError:
+        description = ""
+    finally:
+        data["description"] = description
 
     return data
 
 if __name__ == "__main__":
-    # No faq
-    file_path_1 = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
-    
-    # Has faq. No blurb, creator, backer, goal, date, category, location, projects_num
-    file_path_2 = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-quirky-characters/100-quirky-characters_20190201-150330.html"
-    
-    data_1 = extract_campaign_data(file_path_1)
-    data_2 = extract_campaign_data(file_path_2)
+    # Path to zip files.
+    path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art"
 
-    data = [data_1, data_2]
-    df = pd.DataFrame(data)
+    # Folder which will contain unzipped data.
+    data_folder = "Unzipped"
 
-    df.to_csv('results.csv')
+    html_files = extract_html_files(path, data_folder)
+
+    all_data = []
+    total_files = len(html_files)
+    for i, file in enumerate(html_files, 1):
+        print(f"{i} / {total_files}")
+        file_data = extract_campaign_data(file)
+        all_data.append(file_data)
+
+    df = pd.DataFrame(all_data)
+
+    df.to_csv('results.csv', index=False)
+
+# # Testing code.
+# if __name__ == "__main__":
+#     # No faq
+#     file_path_1 = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
+    
+#     # Has faq. No blurb, creator, backer, goal, date, category, location, projects_num
+#     file_path_2 = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-quirky-characters/100-quirky-characters_20190201-150330.html"
+    
+#     data_1 = extract_campaign_data(file_path_1)
+#     data_2 = extract_campaign_data(file_path_2)
+
+#     data = [data_1, data_2]
+#     df = pd.DataFrame(data)
+
+#     df.to_csv('results.csv')
