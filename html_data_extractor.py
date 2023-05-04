@@ -3,6 +3,7 @@ import zipfile
 import time
 import multiprocessing
 from datetime import datetime
+import re
 
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -43,6 +44,11 @@ def extract_html_files(path, data_folder):
     
     return html_files
 
+def get_digits(string):
+    """Returns only digits from string as a single integer."""
+    res = re.findall(r'\d+', string)
+    return int("".join(res))
+
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
     it in a dictionary.
@@ -52,6 +58,8 @@ def extract_campaign_data(file_path):
         soup = BeautifulSoup(infile, "html.parser")
 
     data = {}
+    # Boolean to toggle for currency conversion.
+    conversion_needed = False
 
     # Date and time accessed.
     date_time_str = file_path.split("_")[-1]
@@ -86,25 +94,54 @@ def extract_campaign_data(file_path):
     finally:
         data["backers"] = backers
 
+    # Get conversion rate of currency if necessary for goal and pledged amounts.
+    curr_elems = soup.select('div[class="input__currency-conversion"]')
+    # Check if currency conversions are present.
+    if len(curr_elems) > 0:
+        curr_elem = curr_elems[0]
+        back_elem = soup.select('input[name="backing[amount]"]')[0]
+
+        base_curr = get_digits(curr_elem.contents[1].getText())
+        other_curr = get_digits(back_elem["value"])
+        conversion_rate = base_curr / other_curr
+        base_curr_symbol = "".join([char for char in curr_elem.contents[1].getText() if not char.isdigit()])
+        conversion_needed = True
+
+        data["conversion_rate"] = conversion_rate
+    else:
+        data["conversion_rate"] = 1
+
     # Project goal.
     try:
         goal_elem = soup.select('span[class="inline-block-sm hide"]')
         goal = goal_elem[0].contents[1].getText()
+        converted_goal = goal
+        if conversion_needed:
+            converted_goal = get_digits(converted_goal) * conversion_rate
+            converted_goal = base_curr_symbol + str(converted_goal)
     # Goal data missing.
     except:
         goal = ""
+        converted_goal = ""
     finally:
         data["goal"] = goal
+        data["converted_goal"] = converted_goal
 
     # Pledged amount.
     try:
         pledged_elem = soup.select('span[class="ksr-green-700"]')
         pledged = pledged_elem[0].getText()
+        converted_pledged = pledged
+        if conversion_needed:
+            converted_pledged = get_digits(converted_pledged) * conversion_rate
+            converted_pledged = base_curr_symbol + str(converted_pledged)
     # Pledged amount data missing.
     except IndexError:
         pledged = ""
+        converted_pledged = ""
     finally: 
         data["pledged"] = pledged
+        data["converted_pledged"] = converted_pledged
 
     # Campaign end time.
     try:
@@ -210,8 +247,10 @@ if __name__ == "__main__":
     df.to_csv('results.csv', index=False)
 
     # # Testing code.
-    # # file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
-    # file_path = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10000-suns-highway-to-park-project-2019/10000-suns-highway-to-park-project-2019_20190418-215900.html"
-    # data = extract_campaign_data(file_path)
-    # df = pd.DataFrame([data])
+    # file_paths = [
+    #             r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
+    #             r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
+    #             ]
+    # data = [extract_campaign_data(file_path) for file_path in file_paths]
+    # df = pd.DataFrame(data)
     # df.to_csv('test.csv', index = False)
