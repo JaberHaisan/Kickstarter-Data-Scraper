@@ -1,23 +1,23 @@
-from datetime import datetime
 import os
 import zipfile
 import time
 import multiprocessing
+from datetime import datetime
 
 from bs4 import BeautifulSoup
 import pandas as pd
 
 def extract_html_files(path, data_folder):
-    """Extracts all html files in the zipped folders in path
+    """Extracts all files in the zipped folders in path
     to the given data folder (created if it doesn't exist) and
-    returns a list of the file paths.
+    returns a list of the html file paths.
 
     path [str] - Path to zip files.
     data_folder [str] - Path to folder to store unzipped data."""
     data_folder_path = os.path.join(path, data_folder)
 
-    # # Make data folder if it doesn't exist.
-    # os.makedirs(data_folder_path, exist_ok=True)
+    # Make data folder if it doesn't exist.
+    os.makedirs(data_folder_path, exist_ok=True)
 
     # Find all zip files in current path and extract them to data_folder.
     zip_files = []
@@ -45,7 +45,9 @@ def extract_html_files(path, data_folder):
 
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
-    it in a dictionary."""
+    it in a dictionary.
+    
+    file_path [str] - Path to html file."""
     with open(file_path, encoding='utf8') as infile:
         soup = BeautifulSoup(infile, "html.parser")
 
@@ -180,6 +182,7 @@ if __name__ == "__main__":
 
     html_files = extract_html_files(path, data_folder)
 
+    # Extract data from html files.
     start = time.time()
 
     pool = multiprocessing.Pool()
@@ -190,8 +193,8 @@ if __name__ == "__main__":
     end = time.time()
     print(f"Took {end-start}s to process {len(html_files)} files.")
 
+    # Create dataframe and export output as csv.
     df = pd.DataFrame(all_data)
-
     df.to_csv('results.csv', index=False)
 
 # # Testing code.
