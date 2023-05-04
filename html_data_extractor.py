@@ -1,6 +1,8 @@
 from datetime import datetime
 import os
 import zipfile
+import time
+import multiprocessing
 
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -178,12 +180,15 @@ if __name__ == "__main__":
 
     html_files = extract_html_files(path, data_folder)
 
-    all_data = []
-    total_files = len(html_files)
-    for i, file in enumerate(html_files, 1):
-        print(f"{i} / {total_files}")
-        file_data = extract_campaign_data(file)
-        all_data.append(file_data)
+    start = time.time()
+
+    pool = multiprocessing.Pool()
+    all_data = pool.map(extract_campaign_data, html_files, chunksize=10)
+    pool.close()
+    pool.join()
+
+    end = time.time()
+    print(f"Took {end-start}s to process {len(html_files)} files.")
 
     df = pd.DataFrame(all_data)
 
