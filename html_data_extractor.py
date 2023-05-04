@@ -120,17 +120,29 @@ def extract_campaign_data(file_path):
         data["endmonth"] = endmonth
         data["endyear"] = endyear
 
-    # Category and Location.
+    # Projects we love (PWL), Category, Location. PWL is 1 if project is 
+    # part of PWL and otherwise 0.
     try:
-        cat_loc_elems = soup.select('span[class="ml1"]')
-        cat_loc_data = [cat_loc_elem.getText() for cat_loc_elem in cat_loc_elems]
-        category = cat_loc_data[0]
-        location = cat_loc_data[-1]
-    # Category and location missing.
+        pwl_cat_loc_elems = soup.select('span[class="ml1"]')
+        pwl_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in pwl_cat_loc_elems]
+
+        # Project is part of Projects we Love.
+        if "Project We Love" in pwl_cat_loc_data:
+            pwl = 1
+            category = pwl_cat_loc_data[1]
+            location = pwl_cat_loc_data[2]
+        else:
+            pwl = 0
+            category = pwl_cat_loc_data[0]
+            location = pwl_cat_loc_data[1]
+
+    # Category or location missing.
     except IndexError:
+        pwl = ""
         category = ""
         location = ""
     finally:
+        data["pwl"] = pwl
         data["category"] = category
         data["location"] = location
 
@@ -197,18 +209,9 @@ if __name__ == "__main__":
     df = pd.DataFrame(all_data)
     df.to_csv('results.csv', index=False)
 
-# # Testing code.
-# if __name__ == "__main__":
-#     # No faq
-#     file_path_1 = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
-    
-#     # Has faq. No blurb, creator, backer, goal, date, category, location, projects_num
-#     file_path_2 = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-quirky-characters/100-quirky-characters_20190201-150330.html"
-    
-#     data_1 = extract_campaign_data(file_path_1)
-#     data_2 = extract_campaign_data(file_path_2)
-
-#     data = [data_1, data_2]
-#     df = pd.DataFrame(data)
-
-#     df.to_csv('results.csv')
+    # # Testing code.
+    # # file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html"
+    # file_path = r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10000-suns-highway-to-park-project-2019/10000-suns-highway-to-park-project-2019_20190418-215900.html"
+    # data = extract_campaign_data(file_path)
+    # df = pd.DataFrame([data])
+    # df.to_csv('test.csv', index = False)
