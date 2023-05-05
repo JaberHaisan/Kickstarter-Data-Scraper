@@ -55,7 +55,7 @@ def extract_campaign_data(file_path):
     
     file_path [str] - Path to html file."""
     with open(file_path, encoding='utf8') as infile:
-        soup = BeautifulSoup(infile, "html.parser")
+        soup = BeautifulSoup(infile, "lxml")
 
     data = {}
     # Boolean to toggle for currency conversion.
