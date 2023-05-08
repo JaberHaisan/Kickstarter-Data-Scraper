@@ -121,6 +121,10 @@ def extract_campaign_data(file_path):
     url_elem = soup.select('meta[property="og:url"]')
     data["url"] = url_elem[0]["content"]
 
+    # Creator profile url
+    creator_profile_elem = soup.select_one('meta[property="kickstarter:creator"]')
+    data["creator_profile"] = creator_profile_elem['content']
+
     # Backers.
     try:
         backers_elem = soup.select('div[class="block type-16 type-24-md medium soft-black"]')
