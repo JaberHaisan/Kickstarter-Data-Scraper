@@ -13,6 +13,7 @@ def extract_html_files(path, data_folder):
     to the given data folder (created if it doesn't exist) and
     returns a list of the html file paths.
 
+    Inputs:
     path [str] - Path to zip files.
     data_folder [str] - Path to folder to store unzipped data."""
     data_folder_path = os.path.join(path, data_folder)
@@ -49,10 +50,46 @@ def get_digits(string):
     res = re.findall(r'\d+', string)
     return int("".join(res))
 
+def get_pledge_data(bs4_tag, index):
+    """Returns a dict of data from a kickstarter pledge li bs4 tag.
+    Dict will contain:
+    rd_title: Pledge title
+    rd_cost: Pledge cost
+    rd_desc: Pledge description 
+    rd_delivery_date: Pledge Estimated Delivery. Format YYYY-MM-DD.
+    rd_backers: Total number of backers.
+    rd_limit: Limit in number of backers of pledge. Empty string if there are no
+    limits.
+
+    Inputs:
+    bs4_tag [bs4.element.Tag] - A tag of a kickstarter Pledge.
+    Index [int] - The index of the current pledge."""
+    pledge_data = {}
+    i = str(index)
+
+    pledge_data['rd_title_' + i] = bs4_tag.select_one('h3[class="pledge__title"]').getText().strip()
+    pledge_data['rd_cost_' + i] = bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()
+    pledge_data['rd_desc_' + i] = bs4_tag.select_one('div[class="pledge__reward-description pledge__reward-description--expanded"]').getText().replace('\n', '')[:-4]
+    pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('span[class="pledge__detail-info"] > time')['datetime']
+
+    try:
+        rd_backers = get_digits(bs4_tag.select_one('span[class="pledge__backer-count"]').getText())
+        rd_limit = ""
+    # Reward has a limit so it has a different class value.
+    except AttributeError:
+        rd_backers = get_digits(bs4_tag.select_one('span[class="block pledge__backer-count"]').getText())
+        rd_limit = get_digits(bs4_tag.select_one('span[class="pledge__limit"]').getText().split()[-1])
+    finally:
+        pledge_data["rd_backers_" + i] = rd_backers
+        pledge_data["rd_limit_" + i] = rd_limit
+
+    return pledge_data
+
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
     it in a dictionary.
     
+    Inputs:
     file_path [str] - Path to html file."""
     with open(file_path, encoding='utf8') as infile:
         soup = BeautifulSoup(infile, "lxml")
@@ -220,7 +257,22 @@ def extract_campaign_data(file_path):
     finally:
         data["description"] = description
 
+    # Pledges.
+    pledge_elems = soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')
+    for i, pledge_elem in enumerate(pledge_elems):
+        data |= get_pledge_data(pledge_elem, i)
+
     return data
+
+def test_extract_campaign_data():
+    # Testing code.
+    file_paths = [
+                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
+                #r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
+                ]
+    data = [extract_campaign_data(file_path) for file_path in file_paths]
+    df = pd.DataFrame(data)
+    df.to_csv('test.csv', index = False)
 
 if __name__ == "__main__":
     # Path to zip files.
@@ -246,11 +298,4 @@ if __name__ == "__main__":
     df = pd.DataFrame(all_data)
     df.to_csv('results.csv', index=False)
 
-    # # Testing code.
-    # file_paths = [
-    #             r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
-    #             r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
-    #             ]
-    # data = [extract_campaign_data(file_path) for file_path in file_paths]
-    # df = pd.DataFrame(data)
-    # df.to_csv('test.csv', index = False)
+    # test_extract_campaign_data()
