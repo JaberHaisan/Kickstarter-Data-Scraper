@@ -72,6 +72,15 @@ def get_pledge_data(bs4_tag, index=0):
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('div[class="pledge__reward-description pledge__reward-description--expanded"]').getText().replace('\n', '')[:-4]
     pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('span[class="pledge__detail-info"] > time')['datetime']
 
+    # Below elem can contain estimated date of delivery and the shipping location (optional).
+    pledge_detail_elems = bs4_tag.select('span[class="pledge__detail-info"]')
+    # It has the shipping location.
+    if len(pledge_detail_elems) > 1:
+        pledge_data['rd_shipping_location_' + i] = pledge_detail_elems[1].getText()
+    # No shipping location.
+    else:
+        pledge_data['rd_shipping_location_' + i] = ""
+
     try:
         rd_backers = get_digits(bs4_tag.select_one('span[class="pledge__backer-count"]').getText())
     # Reward has a limit so it has a different class value.
@@ -279,24 +288,26 @@ def extract_campaign_data(file_path):
     finally:
         data["description"] = description
 
-    # Pledges.
+    # Pledges. rd_gone is 0 because pledge is avaialable. 
     pledge_elems = soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')
     i = 0
     for i, pledge_elem in enumerate(pledge_elems, i):
         data |= get_pledge_data(pledge_elem, i)
+        data |= {"rd_gone_" + str(i): 0}
 
-    # Complete Pledges. Continues from i + 1.
+    # Complete Pledges. Continues from i + 1. rd_gone is 1 because pledge is unavaialable. 
     complete_pledge_elems = soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')
     for j, complete_pledge_elem in enumerate(complete_pledge_elems, i + 1):
         data |= get_pledge_data(complete_pledge_elem, j)
+        data |= {"rd_gone_" + str(j): 1}
 
     return data
 
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
+                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html", # Has completed pledge
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Unzipped/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190224-063557.html", # Has US$
                 ]
