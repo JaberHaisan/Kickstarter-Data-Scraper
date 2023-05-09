@@ -232,24 +232,24 @@ def extract_campaign_data(file_path):
     except IndexError:
         projects_num = ""
     finally:
-        data["projects_num"] = projects_num
+        data["num_projects"] = projects_num
 
     # Number of comments.
     comments_elem = soup.select('data[itemprop="Project[comments_count]"]')
-    data["comments_num"] = comments_elem[0].getText()
+    data["num_comments"] = comments_elem[0].getText()
     
     # Number of updates.
     updates_elem = soup.select('a[data-content="updates"]')[0]
-    data["updates_num"] = updates_elem.contents[1].getText()
+    data["num_updates"] = updates_elem.contents[1].getText()
 
     # Number of faq.
     faq_elem = soup.select('a[data-content="faqs"]')[0]
     # Kickstarter does not show 0 if there are no faq so
     # need to check for lack of faq.
     if len(faq_elem.contents) > 1:
-        data["faq_num"] = faq_elem.contents[1].getText()
+        data["num_faq"] = faq_elem.contents[1].getText()
     else:
-        data["faq_num"] = 0
+        data["num_faq"] = 0
 
     # Description.
     try:
@@ -272,7 +272,7 @@ def test_extract_campaign_data():
     # Testing code.
     file_paths = [
                 r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
-                #r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
