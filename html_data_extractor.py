@@ -46,9 +46,9 @@ def extract_html_files(path, data_folder):
     return html_files
 
 def get_digits(string):
-    """Returns only digits from string as a single integer."""
-    res = re.findall(r'\d+', string)
-    return int("".join(res))
+    """Returns only digits from string as a single float."""
+    res = re.findall(r'[0-9.]', string)
+    return float("".join(res))
 
 def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
@@ -68,7 +68,7 @@ def get_pledge_data(bs4_tag, index=0):
     i = str(index)
 
     pledge_data['rd_title_' + i] = bs4_tag.select_one('h3[class="pledge__title"]').getText().strip()
-    pledge_data['rd_cost_' + i] = bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()
+    pledge_data['rd_cost_' + i] = get_digits(bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()) 
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('div[class="pledge__reward-description pledge__reward-description--expanded"]').getText().replace('\n', '')[:-4]
     pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('span[class="pledge__detail-info"] > time')['datetime']
 
@@ -146,24 +146,39 @@ def extract_campaign_data(file_path):
         curr_elem = curr_elems[0]
         back_elem = soup.select('input[name="backing[amount]"]')[0]
 
-        base_curr = get_digits(curr_elem.contents[1].getText())
-        other_curr = get_digits(back_elem["value"])
-        conversion_rate = base_curr / other_curr
-        base_curr_symbol = "".join([char for char in curr_elem.contents[1].getText() if not char.isdigit()])
-        conversion_needed = True
+        converted_curr_amount = get_digits(curr_elem.contents[1].getText())
+        original_curr_amount = get_digits(back_elem["value"])
+        conversion_rate = converted_curr_amount / original_curr_amount
 
+        # Get symbols for both currencies.
+        converted_curr_symbol = "".join([char for char in curr_elem.contents[1].getText() if not char.isdigit()]).strip()
+        original_curr_symbol = soup.select_one('span[class="new-form__currency-box__text"]').getText().strip()
+
+        conversion_needed = True
         data["conversion_rate"] = conversion_rate
+
+    # No need for conversion.
     else:
         data["conversion_rate"] = 1
+        original_curr_symbol = converted_curr_symbol = re.findall("window.current_currency = '(\w+)'", str(soup))[0].strip()
+
+    # Change symbols if they have known alternate forms.
+    usd_other_set = {"USD", "US$"}
+    if original_curr_symbol in usd_other_set:
+        original_curr_symbol = "$"
+    if converted_curr_symbol in usd_other_set:
+        converted_curr_symbol = "$"
+
+    data["original_curr"] = original_curr_symbol
+    data["converted_curr"] = converted_curr_symbol
 
     # Project goal.
     try:
         goal_elem = soup.select('span[class="inline-block-sm hide"]')
-        goal = goal_elem[0].contents[1].getText()
+        goal = get_digits(goal_elem[0].contents[1].getText()) 
         converted_goal = goal
         if conversion_needed:
-            converted_goal = get_digits(converted_goal) * conversion_rate
-            converted_goal = base_curr_symbol + str(converted_goal)
+            converted_goal = converted_goal * conversion_rate
     # Goal data missing.
     except:
         goal = ""
@@ -175,11 +190,10 @@ def extract_campaign_data(file_path):
     # Pledged amount.
     try:
         pledged_elem = soup.select('span[class="ksr-green-700"]')
-        pledged = pledged_elem[0].getText()
+        pledged = get_digits(pledged_elem[0].getText()) 
         converted_pledged = pledged
         if conversion_needed:
-            converted_pledged = get_digits(converted_pledged) * conversion_rate
-            converted_pledged = base_curr_symbol + str(converted_pledged)
+            converted_pledged = converted_pledged * conversion_rate
     # Pledged amount data missing.
     except IndexError:
         pledged = ""
@@ -281,9 +295,10 @@ def extract_campaign_data(file_path):
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
-                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html",
+                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
+                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html", # Has completed pledge
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Unzipped/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190224-063557.html", # Has US$
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
