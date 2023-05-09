@@ -50,7 +50,7 @@ def get_digits(string):
     res = re.findall(r'\d+', string)
     return int("".join(res))
 
-def get_pledge_data(bs4_tag, index):
+def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
     Dict will contain:
     rd_title: Pledge title
@@ -63,7 +63,7 @@ def get_pledge_data(bs4_tag, index):
 
     Inputs:
     bs4_tag [bs4.element.Tag] - A tag of a kickstarter Pledge.
-    Index [int] - The index of the current pledge."""
+    Index [int] - Optional. The index of the current pledge. Has a default value of 0."""
     pledge_data = {}
     i = str(index)
 
@@ -74,13 +74,17 @@ def get_pledge_data(bs4_tag, index):
 
     try:
         rd_backers = get_digits(bs4_tag.select_one('span[class="pledge__backer-count"]').getText())
-        rd_limit = ""
     # Reward has a limit so it has a different class value.
     except AttributeError:
         rd_backers = get_digits(bs4_tag.select_one('span[class="block pledge__backer-count"]').getText())
-        rd_limit = get_digits(bs4_tag.select_one('span[class="pledge__limit"]').getText().split()[-1])
     finally:
         pledge_data["rd_backers_" + i] = rd_backers
+
+    try:
+        rd_limit = get_digits(bs4_tag.select_one('span[class="pledge__limit"]').getText().split()[-1])
+    except AttributeError:
+        rd_limit = ""
+    finally:
         pledge_data["rd_limit_" + i] = rd_limit
 
     return pledge_data
@@ -263,43 +267,55 @@ def extract_campaign_data(file_path):
 
     # Pledges.
     pledge_elems = soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')
-    for i, pledge_elem in enumerate(pledge_elems):
+    i = 0
+    for i, pledge_elem in enumerate(pledge_elems, i):
         data |= get_pledge_data(pledge_elem, i)
+
+    # Complete Pledges. Continues from i + 1.
+    complete_pledge_elems = soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')
+    for j, complete_pledge_elem in enumerate(complete_pledge_elems, i + 1):
+        data |= get_pledge_data(complete_pledge_elem, j)
 
     return data
 
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
+                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html",
+                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html",
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
     df.to_csv('test.csv', index = False)
 
 if __name__ == "__main__":
-    # Path to zip files.
-    path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art"
+    # Toggle from true/false or 1/0 if testing or not testing.
+    testing = 0
 
-    # Folder which will contain unzipped data.
-    data_folder = "Unzipped"
+    if not testing:
+        # Path to zip files.
+        path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art"
 
-    html_files = extract_html_files(path, data_folder)
+        # Folder which will contain unzipped data.
+        data_folder = "Unzipped"
 
-    # Extract data from html files.
-    start = time.time()
+        html_files = extract_html_files(path, data_folder)
 
-    pool = multiprocessing.Pool()
-    all_data = pool.map(extract_campaign_data, html_files, chunksize=10)
-    pool.close()
-    pool.join()
+        # Extract data from html files.
+        start = time.time()
 
-    end = time.time()
-    print(f"Took {end-start}s to process {len(html_files)} files.")
+        pool = multiprocessing.Pool()
+        all_data = pool.map(extract_campaign_data, html_files, chunksize=10)
+        pool.close()
+        pool.join()
 
-    # Create dataframe and export output as csv.
-    df = pd.DataFrame(all_data)
-    df.to_csv('results.csv', index=False)
+        end = time.time()
+        print(f"Took {end-start}s to process {len(html_files)} files.")
 
-    # test_extract_campaign_data()
+        # Create dataframe and export output as csv.
+        df = pd.DataFrame(all_data)
+        df.to_csv('results.csv', index=False)
+
+    else:
+        test_extract_campaign_data()
