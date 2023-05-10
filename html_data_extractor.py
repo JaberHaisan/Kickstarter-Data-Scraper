@@ -108,6 +108,42 @@ def get_pledge_data(bs4_tag, index=0):
 
     return pledge_data
 
+def get_category_data(cat_str):
+    """Returns a tuple of (category, subcategory) from a given cat_str which
+    can be either a category or subcategory.
+    
+    Inputs:
+    cat_str = A string which is either a category or subcategory."""
+    categories = {'Art': {'Painting', 'Textiles', 'Conceptual Art', 'Video Art', 'Installations', 'Social Practice', 'Sculpture', 'Ceramics', 'Public Art', 'Illustration', 'Digital Art', 'Performance Art', 'Mixed Media'}, 
+                'Comics': {'Comic Books', 'Events', 'Graphic Novels', 'Anthologies', 'Webcomics'}, 
+                'Crafts': {'Candles', 'Printing', 'Crochet', 'Taxidermy', 'Stationery', 'Pottery', 'Weaving', 'DIY', 'Woodworking', 'Embroidery', 'Glass', 'Quilts', 'Knitting'}, 
+                'Dance': {'Spaces', 'Workshops', 'Residencies', 'Performances'}, 
+                'Design': {'Interactive Design', 'Product Design', 'Graphic Design', 'Architecture', 'Typography', 'Toys', 'Civic Design'}, 
+                'Film & Video': {'Television', 'Thrillers', 'Fantasy', 'Music Videos', 'Romance', 'Narrative Film', 'Action', 'Movie Theaters', 'Horror', 'Festivals', 'Experimental', 'Webseries', 'Documentary', 'Family', 'Drama', 'Science Fiction', 'Comedy', 'Animation', 'Shorts'}, 
+                'Food': {'Bacon', 'Cookbooks', "Farmer's Markets", 'Community Gardens', 'Spaces', 'Small Batch', 'Events', 'Drinks', 'Restaurants', 'Vegan', 'Farms', 'Food Trucks'}, 
+                'Games': {'Puzzles', 'Live Games', 'Video Games', 'Mobile Games', 'Gaming Hardware', 'Tabletop Games', 'Playing Cards'}, 
+                'Journalism': {'Photo', 'Video', 'Print', 'Audio', 'Web'}, 
+                'Music': {'Indie Rock', 'Rock', 'Faith', 'Country & Folk', 'World Music', 'Kids', 'Comedy', 'Classical Music', 'Pop', 'Punk', 'Hip-Hop', 'Electronic Music', 'Jazz', 'Latin', 'R&B', 'Blues', 'Metal', 'Chiptune'}, 
+                'Photography': {'People', 'Fine Art', 'Photobooks', 'Nature', 'Animals', 'Places'}, 
+                'Publishing': {'Academic', 'Young Adult', "Children's Books", 'Periodicals', 'Calendars', 'Literary Spaces', 'Fiction', 'Radio & Podcasts', 'Literary Journals', 'Comedy', 'Letterpress', 'Art Books', 'Anthologies', 'Zines', 'Poetry', 'Nonfiction', 'Translations'}, 
+                'Technology': {'Wearables', 'Makerspaces', '3D Printing', 'Robots', 'Space Exploration', 'Hardware', 'Camera Equipment', 'Apps', 'Sound', 'Flight', 'Fabrication Tools', 'Software', 'DIY Electronics', 'Web', 'Gadgets'}, 
+                'Theater': {'Festivals', 'Spaces', 'Experimental', 'Musical', 'Comedy', 'Immersive', 'Plays'}}
+    
+    category, subcategory = "", ""
+
+    # No way to know subcategory from category.
+    if cat_str in categories.keys():
+        category = cat_str
+    else:
+        # Was given a subcategory so find it's category.
+        for category_name, subcategories in categories.items():
+            if cat_str in subcategories:
+                category = category_name
+                subcategory = cat_str
+                break
+    
+    return (category, subcategory)
+
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
     it in a dictionary.
@@ -129,6 +165,15 @@ def extract_campaign_data(file_path):
     data["date_accessed"] = date
     data["time_accessed"] = time
 
+    # Url
+    url_elem = soup.select('meta[property="og:url"]')
+    data["url"] = url_elem[0]["content"]
+
+    # Project Id and Creator Id.
+    creator_id, project_id = data["url"].split("/")[-2:]
+    data["project_id"] = project_id
+    data["creator_id"] = creator_id
+
     # Creator, Title and Blurb
     meta_elem = soup.select('meta[name="description"]')[0]
     lines = meta_elem["content"].splitlines()
@@ -140,14 +185,6 @@ def extract_campaign_data(file_path):
     data["creator"] = creator
     data["blurb"] = blurb 
     
-    # Url
-    url_elem = soup.select('meta[property="og:url"]')
-    data["url"] = url_elem[0]["content"]
-
-    # Creator profile url
-    creator_profile_elem = soup.select_one('meta[property="kickstarter:creator"]')
-    data["creator_profile"] = creator_profile_elem['content']
-
     # Backers.
     try:
         backers_elem = soup.select('div[class="block type-16 type-24-md medium soft-black"]')
@@ -238,35 +275,40 @@ def extract_campaign_data(file_path):
     # Make 100 (make100), Projects we love (pwl), Category, Location. make100/pwl is 1 if project is 
     # part of it and otherwise 0.
     try:
-        pwl_cat_loc_elems = soup.select('span[class="ml1"]')
-        pwl_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in pwl_cat_loc_elems]
+        spc_cat_loc_elems = soup.select('span[class="ml1"]')
+        spc_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in spc_cat_loc_elems]
 
-        # Project is part of Projects we Love.
-        if "Project We Love" in pwl_cat_loc_data:
-            pwl = 1
-            category = pwl_cat_loc_data[1]
-            location = pwl_cat_loc_data[2]
+        special = {"Project We Love", "Make 100"}
+        # Project is part of Projects we Love or Make 100.
+        if spc_cat_loc_data[0] in special:
+            cat_str = spc_cat_loc_data[1]
+            location = spc_cat_loc_data[2]
+            if spc_cat_loc_data[0] == "Project We Love":
+                pwl = 1
+                make100 = 0
+            elif spc_cat_loc_data[0] == "Make 100":
+                pwl = 0
+                make100 = 1
         else:
+            cat_str = spc_cat_loc_data[0]
+            location = spc_cat_loc_data[1]
             pwl = 0
-            category = pwl_cat_loc_data[0]
-            location = pwl_cat_loc_data[1]
-
-        # Project is part of Make 100.
-        if 'Make 100' in pwl_cat_loc_data:
-            make100 = 1
-        else:
-            make100 = 0
+            make100 = 0 
+            
+        category, subcategory = get_category_data(cat_str)
 
     # Category or location missing.
     except IndexError:
         pwl = ""    
         make100 = ""
         category = ""
+        subcategory = ""
         location = ""
     finally:
         data["pwl"] = pwl
         data["make100"] = make100
         data["category"] = category
+        data["subcategory"] = subcategory
         data["location"] = location
 
     # Number of projects created.
