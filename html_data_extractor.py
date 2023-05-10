@@ -56,7 +56,9 @@ def get_pledge_data(bs4_tag, index=0):
     rd_title: Pledge title
     rd_cost: Pledge cost
     rd_desc: Pledge description 
+    rd_list: A list of rewards from pledge description. Empty string if no list given.
     rd_delivery_date: Pledge Estimated Delivery. Format YYYY-MM-DD.
+    rd_shipping_location: Pledge Shipping location. Empty string if no shipping location.
     rd_backers: Total number of backers.
     rd_limit: Limit in number of backers of pledge. Empty string if there are no
     limits.
@@ -70,6 +72,14 @@ def get_pledge_data(bs4_tag, index=0):
     pledge_data['rd_title_' + i] = bs4_tag.select_one('h3[class="pledge__title"]').getText().strip()
     pledge_data['rd_cost_' + i] = get_digits(bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()) 
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('div[class="pledge__reward-description pledge__reward-description--expanded"]').getText().replace('\n', '')[:-4]
+    
+    # Rewards list. If it does not exist, return empty string.
+    rd_list = [elem.getText().replace('\n', '') for elem in bs4_tag.select('li[class="list-disc"]')]
+    if len(rd_list) == 0:
+        pledge_data['rd_list_' + i] = ""
+    else:
+        pledge_data['rd_list_' + i] = rd_list
+    
     pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('span[class="pledge__detail-info"] > time')['datetime']
 
     # Below elem can contain estimated date of delivery and the shipping location (optional).
@@ -307,9 +317,9 @@ def test_extract_campaign_data():
     # Testing code.
     file_paths = [
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html", # Has completed pledge
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Unzipped/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190224-063557.html", # Has US$
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
