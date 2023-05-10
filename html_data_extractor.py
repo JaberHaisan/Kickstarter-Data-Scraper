@@ -306,6 +306,19 @@ def extract_campaign_data(file_path):
     finally:
         data["description"] = description
 
+    # Risks.
+    try:
+        risk_elem = soup.select('div[class="mb3 mb10-sm mb3 js-risks"]')
+        risk = risk_elem[0].getText().strip()
+        # Remove first line "Risks and challenges" and last line "Learn about accountability on Kickstarter"
+        # because they are the same for all projects.
+        risk = "".join(risk.splitlines(keepends=True)[1:-1])
+    # Risk missing.
+    except IndexError:
+        risk = ""
+    finally:
+        data["risk"] = risk
+
     # Pledges. rd_gone is 0 because pledge is avaialable. 
     pledge_elems = soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')
     i = 0
