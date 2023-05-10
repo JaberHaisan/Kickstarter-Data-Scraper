@@ -235,8 +235,8 @@ def extract_campaign_data(file_path):
         data["endmonth"] = endmonth
         data["endyear"] = endyear
 
-    # Projects we love (PWL), Category, Location. PWL is 1 if project is 
-    # part of PWL and otherwise 0.
+    # Make 100 (make100), Projects we love (pwl), Category, Location. make100/pwl is 1 if project is 
+    # part of it and otherwise 0.
     try:
         pwl_cat_loc_elems = soup.select('span[class="ml1"]')
         pwl_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in pwl_cat_loc_elems]
@@ -251,13 +251,21 @@ def extract_campaign_data(file_path):
             category = pwl_cat_loc_data[0]
             location = pwl_cat_loc_data[1]
 
+        # Project is part of Make 100.
+        if 'Make 100' in pwl_cat_loc_data:
+            make100 = 1
+        else:
+            make100 = 0
+
     # Category or location missing.
     except IndexError:
-        pwl = ""
+        pwl = ""    
+        make100 = ""
         category = ""
         location = ""
     finally:
         data["pwl"] = pwl
+        data["make100"] = make100
         data["category"] = category
         data["location"] = location
 
