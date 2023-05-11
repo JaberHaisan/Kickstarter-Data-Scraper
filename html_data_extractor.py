@@ -11,7 +11,8 @@ import pandas as pd
 def extract_html_files(path, data_folder):
     """Extracts all files in the zipped folders in path
     to the given data folder (created if it doesn't exist) and
-    returns a list of the html file paths.
+    returns a tuple of lists of the html file paths according to
+    their type.
 
     Inputs:
     path [str] - Path to zip files.
@@ -32,18 +33,22 @@ def extract_html_files(path, data_folder):
             zip_ref.extractall(data_folder_path)
 
     # Files to ignore.
-    ignore_set = {"community", "faqs", "comments", "updates"}
+    ignore_set = {"community", "faqs", "comments"}
 
     # Get paths of all html files in the data folder.
-    html_files = []
-    for (root,dirs,files) in os.walk(data_folder_path):
+    campaign_files = []
+    update_files = []
+    for (root, dirs, files) in os.walk(data_folder_path):
         for file in files:
             if file.endswith(".html"):
-                # Ignore certain files.
-                if file.split("_")[1] not in ignore_set:
-                    html_files.append(os.path.join(root, file))
+                file_type = file.split("_")[1]
+
+                if file_type == "updates":
+                    update_files.append(os.path.join(root, file))
+                elif file_type not in ignore_set:
+                    campaign_files.append(os.path.join(root, file))
     
-    return html_files
+    return campaign_files, update_files
 
 def get_digits(string):
     """Returns only digits from string as a single float."""
@@ -361,18 +366,20 @@ def extract_campaign_data(file_path):
     finally:
         data["risk"] = risk
 
-    # Pledges. rd_gone is 0 because pledge is avaialable. 
-    pledge_elems = soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')
-    i = 0
-    for i, pledge_elem in enumerate(pledge_elems, i):
-        data |= get_pledge_data(pledge_elem, i)
-        data |= {"rd_gone_" + str(i): 0}
+    # Pledges. rd_gone is 0 for available pledges and 1 for complete pledges. 
+    all_pledge_elems = []
+    available_rd_gone = 0
+    complete_rd_gone = 1
 
-    # Complete Pledges. Continues from i + 1. rd_gone is 1 because pledge is unavaialable. 
-    complete_pledge_elems = soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')
-    for j, complete_pledge_elem in enumerate(complete_pledge_elems, i + 1):
-        data |= get_pledge_data(complete_pledge_elem, j)
-        data |= {"rd_gone_" + str(j): 1}
+    # Tuples of (pledge_elem, rd_gone).
+    all_pledge_elems.extend([(elem, available_rd_gone) for elem in soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')])
+    all_pledge_elems.extend([(elem, complete_rd_gone) for elem in soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')])
+
+    data["num_pledges"] = len(all_pledge_elems)
+
+    for i, (pledge_elem, rd_gone) in enumerate(all_pledge_elems):
+        data |= get_pledge_data(pledge_elem, i)
+        data |= {"rd_gone_" + str(i): rd_gone}
 
     return data
 
@@ -399,18 +406,18 @@ if __name__ == "__main__":
         # Folder which will contain unzipped data.
         data_folder = "Unzipped"
 
-        html_files = extract_html_files(path, data_folder)
+        campaign_files, update_files = extract_html_files(path, data_folder)
 
         # Extract data from html files.
         start = time.time()
 
         pool = multiprocessing.Pool()
-        all_data = pool.map(extract_campaign_data, html_files, chunksize=10)
+        all_data = pool.map(extract_campaign_data, campaign_files, chunksize=10)
         pool.close()
         pool.join()
 
         end = time.time()
-        print(f"Took {end-start}s to process {len(html_files)} files.")
+        print(f"Took {end-start}s to process {len(campaign_files)} files.")
 
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
