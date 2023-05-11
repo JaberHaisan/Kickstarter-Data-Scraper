@@ -4,6 +4,7 @@ import time
 import multiprocessing
 from datetime import datetime
 import re
+from collections import defaultdict
 
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -149,6 +150,37 @@ def get_category_data(cat_str):
     
     return (category, subcategory)
 
+def extract_update_data(root_dict):
+    """Takes a dictionary of root, files as key, values and returns
+    a dictionary.
+    
+    Inputs:
+    root_dict[dict]: A dict with key of root and value of list of paths of 
+    kickstarter update files."""
+    update_data = {}
+    for root, files in root_dict.items():
+        for file in files:
+            with open(file, encoding='utf8') as infile:
+                soup = BeautifulSoup(infile, "lxml")
+            
+            # Url
+            url = soup.select_one('meta[property="og:url"]')["content"]
+
+            # Start date
+            date = soup.select_one('time[class="invisible-if-js js-adjust-time"]')
+
+            # First file has the start date so no point in checking the other files
+            if date != None:
+                dt = datetime.strptime(date.getText(), "%B %d, %Y")
+                update_data[url] = [dt.day, dt.month, dt.year]
+                break
+
+        # None of the files had the start date.
+        else:
+            update_data[url] = ["", "", ""]
+
+    return update_data
+
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
     it in a dictionary.
@@ -262,6 +294,12 @@ def extract_campaign_data(file_path):
     finally: 
         data["pledged"] = pledged
         data["converted_pledged"] = converted_pledged
+
+    # Campaign start time. Will be extracted from updates files
+    # so just leave space for it to be added later.
+    data["startday"] = ""
+    data["startmonth"] = ""
+    data["startyear"] = ""
 
     # Campaign end time.
     try:
@@ -411,13 +449,31 @@ if __name__ == "__main__":
         # Extract data from html files.
         start = time.time()
 
+        # Process update files.
+        roots = defaultdict(list)
+        for file_path in  update_files:
+            roots[os.path.dirname(file_path)].append(file_path)
+
+        update_data = extract_update_data(roots)
+
+        # Process campaign files.
         pool = multiprocessing.Pool()
-        all_data = pool.map(extract_campaign_data, campaign_files, chunksize=10)
+        campaign_data = pool.map(extract_campaign_data, campaign_files, chunksize=10)
         pool.close()
         pool.join()
 
+        # Merge campaign and update data.
+        all_data = []
+        for campaign_datum in campaign_data:
+            url = campaign_datum["url"]
+            campaign_datum["startday"] = update_data[url][0]
+            campaign_datum["startmonth"] = update_data[url][1]
+            campaign_datum["startyear"] = update_data[url][2]
+            
+            all_data.append(campaign_datum)
+
         end = time.time()
-        print(f"Took {end-start}s to process {len(campaign_files)} files.")
+        print(f"Took {end-start}s to process {len(campaign_files) + len(update_files)} files.")
 
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
