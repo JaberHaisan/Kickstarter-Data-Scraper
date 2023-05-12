@@ -159,34 +159,37 @@ def get_category_data(cat_str):
     
     return (category, subcategory)
 
-def extract_update_data(files_list):
+def extract_update_files_data(files):
+    """"Helper function for extract_update_data. Takes a list of files
+    and returns a tuple of (url, startdate)."""
+    date = ("", "", "")
+    for file in files:
+        with open(file, encoding='utf8') as infile:
+            soup = BeautifulSoup(infile, "lxml")
+        
+        # Url
+        url = soup.select_one('meta[property="og:url"]')["content"]
+
+        # Start date
+        date_elem = soup.select_one('time[class="invisible-if-js js-adjust-time"]')
+
+        # First file has the start date so no point in checking the other files
+        if date_elem != None:
+            dt = datetime.strptime(date_elem.getText(), "%B %d, %Y")
+            date = (dt.day, dt.month, dt.year)
+            break
+    
+    return (url, date)
+    
+def extract_update_data(files_list, pool):
     """Takes a list of files list and returns a dictionary with urls as keys
     and start dates as values.
     
     Inputs:
-    files_list[list]: A list containing lists of files of the same root."""
-    update_data = {}
-    for files in files_list:
-        for file in files:
-            with open(file, encoding='utf8') as infile:
-                soup = BeautifulSoup(infile, "lxml")
-            
-            # Url
-            url = soup.select_one('meta[property="og:url"]')["content"]
-
-            # Start date
-            date = soup.select_one('time[class="invisible-if-js js-adjust-time"]')
-
-            # First file has the start date so no point in checking the other files
-            if date != None:
-                dt = datetime.strptime(date.getText(), "%B %d, %Y")
-                update_data[url] = [dt.day, dt.month, dt.year]
-                break
-
-        # None of the files had the start date.
-        else:
-            update_data[url] = ["", "", ""]
-
+    files_list[list]: A list containing lists of files of the same root.
+    pool [multiproccessing.Pool]: A multiprocessing pool."""
+    files_data = pool.map(extract_update_files_data, files_list)
+    update_data = dict(files_data)
     return update_data
 
 def extract_campaign_data(file_path):
@@ -483,11 +486,11 @@ if __name__ == "__main__":
         roots = defaultdict(list)
         for file_path in  update_files:
             roots[os.path.dirname(file_path)].append(file_path)
-        
-        update_data = extract_update_data(roots.values())
+
+        pool = multiprocessing.Pool()
+        update_data = extract_update_data(roots.values(), pool)
 
         # Process campaign files.
-        pool = multiprocessing.Pool()
         campaign_data = pool.map(extract_campaign_data, campaign_files, chunksize=10)
         pool.close()
         pool.join()
