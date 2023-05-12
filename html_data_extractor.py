@@ -314,6 +314,21 @@ def extract_campaign_data(file_path):
         data["endmonth"] = endmonth
         data["endyear"] = endyear
 
+    # Number of images and photos.
+    photos, videos = 0, 0
+    # Get number of photos and videos in highlight.
+    highlight_elem = soup.select_one('div[class="grid-row grid-row mb5-lg mb0-md order-0-md order-2-lg"]')
+    if highlight_elem != None:
+        photos += len(highlight_elem.select("img"))
+        videos += len(highlight_elem.select("video"))
+    # Get number of photos and videos in description.
+    description_container_elem = soup.select_one('div[class="col col-8 description-container"]')
+    if description_container_elem != None:
+        photos += len(description_container_elem.select("img"))
+        videos += len(description_container_elem.select("video"))
+    data["num_photos"] = photos
+    data["num_videos"] = videos
+
     # Make 100 (make100), Projects we love (pwl), Category, Location. make100/pwl is 1 if project is 
     # part of it and otherwise 0.
     try:
@@ -430,10 +445,10 @@ def test_extract_campaign_data():
     # Testing code.
     file_paths = [
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html", # Has completed pledge
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190223-123554.html",
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190223-123554.html",
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
