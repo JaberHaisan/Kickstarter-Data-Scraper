@@ -51,10 +51,19 @@ def extract_html_files(path, data_folder):
     
     return campaign_files, update_files
 
-def get_digits(string):
-    """Returns only digits from string as a single float."""
-    res = re.findall(r'[0-9.]', string)
-    return float("".join(res))
+def get_digits(string, conv="float"):
+    """Returns only digits from string as a single int/float. Default
+    is float.
+    
+    Inputs: 
+    string[str] - Any string.
+    conv[str] - Enter "float" if you need float. Otherwise will provide integer."""
+    if conv == "float":
+        res = re.findall(r'[0-9.]+', string)
+        return float("".join(res))
+    else:
+        res = re.findall(r'\d+', string)
+        return int("".join(res))
 
 def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
@@ -267,7 +276,7 @@ def extract_campaign_data(file_path):
     # Project goal.
     try:
         goal_elem = soup.select('span[class="inline-block-sm hide"]')
-        goal = get_digits(goal_elem[0].contents[1].getText()) 
+        goal = get_digits(goal_elem[0].contents[1].getText(), "int") 
         converted_goal = goal
         if conversion_needed:
             converted_goal = converted_goal * conversion_rate
