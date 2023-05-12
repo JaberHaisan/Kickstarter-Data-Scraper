@@ -356,8 +356,14 @@ def extract_campaign_data(file_path):
 
     # Number of projects created.
     try:
-       project_num_elem = soup.select('a[class="dark-grey-500 keyboard-focusable"]')
-       projects_num = project_num_elem[0].getText().split()[0]
+        project_num_elem = soup.select('a[class="dark-grey-500 keyboard-focusable"]')
+        # Try other possible tag for project num if necessary.
+        if len(project_num_elem) == 0:
+            project_num_elem = soup.select('span[class="dark-grey-500"]')   
+
+        projects_num = project_num_elem[0].getText().split()[0]
+        if projects_num == "First":
+            projects_num = "1"
     # Project number missing.
     except IndexError:
         projects_num = ""
@@ -427,7 +433,8 @@ def test_extract_campaign_data():
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html", # Has completed pledge
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190223-123554.html",
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -435,7 +442,7 @@ def test_extract_campaign_data():
 
 if __name__ == "__main__":
     # Toggle from true/false or 1/0 if testing or not testing.
-    testing = 0
+    testing = 1
 
     if not testing:
         # Path to zip files.
