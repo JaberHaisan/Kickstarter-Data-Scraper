@@ -150,15 +150,14 @@ def get_category_data(cat_str):
     
     return (category, subcategory)
 
-def extract_update_data(root_dict):
-    """Takes a dictionary of root, files as key, values and returns
-    a dictionary.
+def extract_update_data(files_list):
+    """Takes a list of files list and returns a dictionary with urls as keys
+    and start dates as values.
     
     Inputs:
-    root_dict[dict]: A dict with key of root and value of list of paths of 
-    kickstarter update files."""
+    files_list[list]: A list containing lists of files of the same root."""
     update_data = {}
-    for root, files in root_dict.items():
+    for files in files_list:
         for file in files:
             with open(file, encoding='utf8') as infile:
                 soup = BeautifulSoup(infile, "lxml")
@@ -442,7 +441,7 @@ def test_extract_campaign_data():
 
 if __name__ == "__main__":
     # Toggle from true/false or 1/0 if testing or not testing.
-    testing = 1
+    testing = 0
 
     if not testing:
         # Path to zip files.
@@ -460,8 +459,8 @@ if __name__ == "__main__":
         roots = defaultdict(list)
         for file_path in  update_files:
             roots[os.path.dirname(file_path)].append(file_path)
-
-        update_data = extract_update_data(roots)
+        
+        update_data = extract_update_data(roots.values())
 
         # Process campaign files.
         pool = multiprocessing.Pool()
