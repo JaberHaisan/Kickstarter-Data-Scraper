@@ -69,7 +69,7 @@ def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
     Dict will contain:
     rd_title: Pledge title
-    rd_cost: Pledge cost
+    rd_price: Pledge price
     rd_desc: Pledge description 
     rd_list: A list of rewards from pledge description. Empty string if no list given.
     rd_delivery_date: Pledge Estimated Delivery. Format YYYY-MM-DD.
@@ -85,7 +85,7 @@ def get_pledge_data(bs4_tag, index=0):
     i = str(index)
 
     pledge_data['rd_title_' + i] = bs4_tag.select_one('h3[class="pledge__title"]').getText().strip()
-    pledge_data['rd_cost_' + i] = get_digits(bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()) 
+    pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()) 
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('div[class="pledge__reward-description pledge__reward-description--expanded"]').getText().replace('\n', '')[:-4]
     
     # Rewards list. If it does not exist, return empty string.
@@ -254,12 +254,12 @@ def extract_campaign_data(file_path):
         data["conversion_rate"] = 1
         original_curr_symbol = converted_curr_symbol = re.findall("window.current_currency = '(\w+)'", str(soup))[0].strip()
 
-    # Change symbols if they have known alternate forms.
-    usd_other_set = {"USD", "US$"}
-    if original_curr_symbol in usd_other_set:
-        original_curr_symbol = "$"
-    if converted_curr_symbol in usd_other_set:
-        converted_curr_symbol = "$"
+    # Fix symbols to one form if they have known alternate forms.
+    fixed_symbols = {"USD": "$", "US$": "$", "Â£": "£", "â‚¬": "€"}
+    if original_curr_symbol in fixed_symbols.keys():
+        original_curr_symbol = fixed_symbols[original_curr_symbol]
+    if converted_curr_symbol in fixed_symbols.keys():
+        converted_curr_symbol = fixed_symbols[converted_curr_symbol]
 
     data["original_curr"] = original_curr_symbol
     data["converted_curr"] = converted_curr_symbol
@@ -433,7 +433,7 @@ def extract_campaign_data(file_path):
     all_pledge_elems.extend([(elem, available_rd_gone) for elem in soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')])
     all_pledge_elems.extend([(elem, complete_rd_gone) for elem in soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')])
 
-    data["num_pledges"] = len(all_pledge_elems)
+    data["num_rewards"] = len(all_pledge_elems)
 
     for i, (pledge_elem, rd_gone) in enumerate(all_pledge_elems):
         data |= get_pledge_data(pledge_elem, i)
@@ -445,10 +445,11 @@ def test_extract_campaign_data():
     # Testing code.
     file_paths = [
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190214-140329.html", # Requires currency conversion
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\9th-annual-prhbtn-street-art-festival\9th-annual-prhbtn-street-art-festival_20190827-163448.html", # Has completed pledge
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/100-day-project-floral-postcard-and-greeting-cards/100-day-project-floral-postcard-and-greeting-cards_20190223-123554.html",
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html" # Has currency issue
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
