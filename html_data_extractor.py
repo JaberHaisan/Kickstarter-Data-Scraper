@@ -160,8 +160,7 @@ def get_category_data(cat_str):
     return (category, subcategory)
 
 def extract_update_files_data(files):
-    """"Helper function for extract_update_data. Takes a list of files
-    and returns a tuple of (url, startdate)."""
+    """"Takes a list of update files of the same root and returns a tuple of url and startdate."""
     date = ("", "", "")
     for file in files:
         with open(file, encoding='utf8') as infile:
@@ -180,17 +179,6 @@ def extract_update_files_data(files):
             break
     
     return (url, date)
-    
-def extract_update_data(files_list, pool):
-    """Takes a list of files list and returns a dictionary with urls as keys
-    and start dates as values.
-    
-    Inputs:
-    files_list[list]: A list containing lists of files of the same root.
-    pool [multiproccessing.Pool]: A multiprocessing pool."""
-    files_data = pool.map(extract_update_files_data, files_list)
-    update_data = dict(files_data)
-    return update_data
 
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
@@ -488,7 +476,8 @@ if __name__ == "__main__":
             roots[os.path.dirname(file_path)].append(file_path)
 
         pool = multiprocessing.Pool()
-        update_data = extract_update_data(roots.values(), pool)
+        update_data = pool.map(extract_update_files_data, roots.values())
+        update_data = dict(update_data)
 
         # Process campaign files.
         campaign_data = pool.map(extract_campaign_data, campaign_files, chunksize=10)
