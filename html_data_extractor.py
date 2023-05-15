@@ -6,6 +6,11 @@ from datetime import datetime
 import re
 from collections import defaultdict
 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 from bs4 import BeautifulSoup
 import pandas as pd
 
@@ -161,7 +166,6 @@ def get_category_data(cat_str):
 
 def extract_update_files_data(files):
     """"Takes a list of update files of the same root and returns a tuple of url and startdate."""
-    date = ("", "", "")
     for file in files:
         with open(file, encoding='utf8') as infile:
             soup = BeautifulSoup(infile, "lxml")
@@ -175,9 +179,23 @@ def extract_update_files_data(files):
         # First file has the start date so no point in checking the other files
         if date_elem != None:
             dt = datetime.strptime(date_elem.getText(), "%B %d, %Y")
-            date = (dt.day, dt.month, dt.year)
             break
-    
+    # None of the saved files had the start date so take it from the live page.
+    else:
+        update_url = url + "/posts"
+        driver = webdriver.Chrome()
+        driver.get(update_url)
+        # Wait at most 10s for required tag to load and otherwise raise a TimeoutException.
+        date_selector = 'div[class="type-11 type-14-sm text-uppercase"]'
+        try:
+            element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, date_selector))
+            )
+        finally:
+            dt = datetime.strptime(driver.find_element(By.CSS_SELECTOR, date_selector).text, "%B %d, %Y")
+            driver.quit()
+
+    date = (dt.day, dt.month, dt.year)
     return (url, date)
 
 def extract_campaign_data(file_path):
@@ -433,8 +451,13 @@ def extract_campaign_data(file_path):
         # Unsuccesful campaign
         if time_left_elem == None or time_left_elem.getText() == "0":
             fin_elem = soup.select_one('div[class="normal type-18"]')
-            if fin_elem != None and "Unsuccessful" in fin_elem.getText():
-                data["status"] = "Unsuccessful"
+            if fin_elem != None: 
+                if "Unsuccessful" in fin_elem.getText():
+                    data["status"] = "Unsuccessful"
+                else:
+                    print("Check status:", file_path, fin_elem.getText())
+                    data["status"] = fin_elem.getText()
+
         # Live campaign
         else:
             data["status"] = "Live"
