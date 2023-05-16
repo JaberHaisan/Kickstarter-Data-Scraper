@@ -246,8 +246,8 @@ def extract_campaign_data(file_path):
     # Status of campaign.
     status = ""
     # Only succesful campaigns have the below tag.
-    succesful_elem = soup.select_one('div[class="NS_campaigns__spotlight_stats"]')
-    if succesful_elem == None:
+    successful_stats_elem = soup.select_one('div[class="NS_campaigns__spotlight_stats"]')
+    if successful_stats_elem == None:
         time_left_elem = soup.select_one('span[class="block type-16 type-24-md medium soft-black"]')
         # Unsuccesful campaign
         if time_left_elem == None or time_left_elem.getText() == "0":
@@ -481,35 +481,30 @@ def extract_campaign_data(file_path):
 
     # Number of faq.
     faq_elem = soup.select('a[data-content="faqs"]')[0]
-    # Kickstarter does not show 0 if there are no faq so
-    # need to check for lack of faq.
+    # Kickstarter does not show 0 if there is no faq.
     if len(faq_elem.contents) > 1:
         data["num_faq"] = faq_elem.contents[1].getText()
     else:
         data["num_faq"] = 0
 
     # Description.
-    try:
-        description_elem = soup.select('div[class="full-description js-full-description responsive-media formatted-lists"]')
-        description = description_elem[0].getText().strip()
-    # Desciption missing.
-    except IndexError:
+    description_elem = soup.select_one('div[class="full-description js-full-description responsive-media formatted-lists"]')
+    if description_elem != None:
+        description = description_elem.getText().strip()
+    else:
         description = ""
-    finally:
-        data["description"] = description
-
+    data["description"] = description
+    
     # Risks.
-    try:
-        risk_elem = soup.select('div[class="mb3 mb10-sm mb3 js-risks"]')
+    risk_elem = soup.select_one('div[class="mb3 mb10-sm mb3 js-risks"]')
+    if risk_elem != None:
         risk = risk_elem[0].getText().strip()
         # Remove first line "Risks and challenges" and last line "Learn about accountability on Kickstarter"
         # because they are the same for all projects.
         risk = "".join(risk.splitlines(keepends=True)[1:-1])
-    # Risk missing.
-    except IndexError:
+    else:
         risk = ""
-    finally:
-        data["risk"] = risk
+    data["risk"] = risk
 
     # Pledges. rd_gone is 0 for available pledges and 1 for complete pledges. 
     all_pledge_elems = []
