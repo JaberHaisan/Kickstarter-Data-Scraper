@@ -498,7 +498,7 @@ def extract_campaign_data(file_path):
     # Risks.
     risk_elem = soup.select_one('div[class="mb3 mb10-sm mb3 js-risks"]')
     if risk_elem != None:
-        risk = risk_elem[0].getText().strip()
+        risk = risk_elem.getText().strip()
         # Remove first line "Risks and challenges" and last line "Learn about accountability on Kickstarter"
         # because they are the same for all projects.
         risk = "".join(risk.splitlines(keepends=True)[1:-1])
