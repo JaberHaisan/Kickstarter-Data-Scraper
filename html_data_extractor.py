@@ -242,23 +242,6 @@ def extract_campaign_data(file_path):
     data["title"] = title
     data["creator"] = creator
     data["blurb"] = blurb 
-    
-    # Backers.
-    try:
-        backers_elem = soup.select('div[class="block type-16 type-24-md medium soft-black"]')
-        backers = backers_elem[0].getText()
-    # Backers data missing.
-    except:
-        # Successful projects have a different backers tag.
-        alt_backer_elem = soup.select_one('div[class="mb0"] > h3[class="mb0"]')
-        if alt_backer_elem == None:
-            backers = ""
-        else:
-            backers = alt_backer_elem.getText().strip()
-    finally:
-        data["backers"] = backers
-    
-    
 
     # Status of campaign.
     status = ""
@@ -283,17 +266,50 @@ def extract_campaign_data(file_path):
         status = "Successful"
 
     data["status"] = status
-
+    
+    # Backers.
+    backers = ""
     if status == "Successful":
-        # Need to find currency symbols, goals and pledges for
-        # successful campaigns differently.
+        backers_selector = 'div[class="mb0"] > h3[class="mb0"]'
+    else:
+        backers_selector = 'div[class="block type-16 type-24-md medium soft-black"]'
+
+    backers_elem = soup.select_one(backers_selector)
+    if backers_elem != None:
+        backers = backers_elem.getText().strip()
+
+    data["backers"] = backers
+
+    # Some tags for campaigns at different statuses are distinct for
+    # currency symbols, goals and pledges.
+    if status == "Successful":
         succesful_pledge_elem = soup.select_one('h3[class="mb0"] > span[class="money"]')
+        successful_goal_elem = soup.select_one('div[class="type-12 medium navy-500"] > span[class="money"]')
+
         # No way to get conversion rate in a successful project.
         data["conversion_rate"] = 1
-        data["original_curr"] = data["converted_curr"] = get_str(succesful_pledge_elem.getText())
-        data["pledged"] = data["converted_pledged"] = get_digits(succesful_pledge_elem.getText())
-        successful_goal_elem = soup.select_one('div[class="type-12 medium navy-500"] > span[class="money"]')
-        data["goal"] = data["converted_goal"] = get_digits(successful_goal_elem.getText())   
+
+        if successful_goal_elem != None:
+            data["original_curr"] = data["converted_curr"] = get_str(successful_goal_elem.getText())
+            data["goal"] = data["converted_goal"] = get_digits(successful_goal_elem.getText())
+
+        if succesful_pledge_elem != None:
+            data["pledged"] = data["converted_pledged"] = get_digits(succesful_pledge_elem.getText())
+
+    elif status == "Unsuccessful":
+        unsuccessful_pledge_elem = soup.select_one('span[class="soft-black"]')
+        unsuccessful_goal_elem = soup.select_one('span[class="inline-block-sm hide"] > span[class="money"]')
+
+        # No way to get conversion rate in an unsuccessful project.
+        data["conversion_rate"] = 1
+
+        if unsuccessful_goal_elem != None:
+            data["original_curr"] = data["converted_curr"] = get_str(unsuccessful_goal_elem.getText())
+            data["goal"] = data["converted_goal"] = get_digits(unsuccessful_goal_elem.getText())
+        
+        if unsuccessful_pledge_elem != None:
+            data["pledged"] = data["converted_pledged"] = get_digits(unsuccessful_pledge_elem.getText())
+        
     else:
         # Get conversion rate of currency if necessary for goal and pledged amounts.
         curr_elems = soup.select('div[class="input__currency-conversion"]')
@@ -519,8 +535,8 @@ def test_extract_campaign_data():
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Succesful campaign
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Succesful campaign
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -528,7 +544,7 @@ def test_extract_campaign_data():
 
 if __name__ == "__main__":
     # Toggle from true/false or 1/0 if testing or not testing.
-    testing = 0
+    testing = 1
 
     if not testing:
         # Path to zip files.
