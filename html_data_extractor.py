@@ -56,6 +56,10 @@ def extract_html_files(path, data_folder):
     
     return campaign_files, update_files
 
+def get_str(string):
+    """Returns a string without any digits."""
+    return "".join([char for char in string if not char.isdigit()]).strip()
+
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
     is float.
@@ -245,72 +249,114 @@ def extract_campaign_data(file_path):
         backers = backers_elem[0].getText()
     # Backers data missing.
     except:
-        backers = ""
+        # Successful projects have a different backers tag.
+        alt_backer_elem = soup.select_one('div[class="mb0"] > h3[class="mb0"]')
+        if alt_backer_elem == None:
+            backers = ""
+        else:
+            backers = alt_backer_elem.getText().strip()
     finally:
         data["backers"] = backers
+    
+    
 
-    # Get conversion rate of currency if necessary for goal and pledged amounts.
-    curr_elems = soup.select('div[class="input__currency-conversion"]')
-    # Check if currency conversions are present.
-    if len(curr_elems) > 0:
-        curr_elem = curr_elems[0]
-        back_elem = soup.select('input[name="backing[amount]"]')[0]
+    # Status of campaign.
+    status = ""
+    # Only succesful campaigns have the below tag.
+    succesful_elem = soup.select_one('div[class="NS_campaigns__spotlight_stats"]')
+    if succesful_elem == None:
+        time_left_elem = soup.select_one('span[class="block type-16 type-24-md medium soft-black"]')
+        # Unsuccesful campaign
+        if time_left_elem == None or time_left_elem.getText() == "0":
+            fin_elem = soup.select_one('div[class="normal type-18"]')
+            if fin_elem != None: 
+                if "Unsuccessful" in fin_elem.getText():
+                    status = "Unsuccessful"
+                else:
+                    print("Check status:", file_path, fin_elem.getText())
+                    status = fin_elem.getText()
 
-        converted_curr_amount = get_digits(curr_elem.contents[1].getText())
-        original_curr_amount = get_digits(back_elem["value"])
-        conversion_rate = converted_curr_amount / original_curr_amount
-
-        # Get symbols for both currencies.
-        converted_curr_symbol = "".join([char for char in curr_elem.contents[1].getText() if not char.isdigit()]).strip()
-        original_curr_symbol = soup.select_one('span[class="new-form__currency-box__text"]').getText().strip()
-
-        conversion_needed = True
-        data["conversion_rate"] = conversion_rate
-
-    # No need for conversion.
+        # Live campaign
+        else:
+            status = "Live"
     else:
+        status = "Successful"
+
+    data["status"] = status
+
+    if status == "Successful":
+        # Need to find currency symbols, goals and pledges for
+        # successful campaigns differently.
+        succesful_pledge_elem = soup.select_one('h3[class="mb0"] > span[class="money"]')
+        # No way to get conversion rate in a successful project.
         data["conversion_rate"] = 1
-        original_curr_symbol = converted_curr_symbol = re.findall("window.current_currency = '(\w+)'", str(soup))[0].strip()
+        data["original_curr"] = data["converted_curr"] = get_str(succesful_pledge_elem.getText())
+        data["pledged"] = data["converted_pledged"] = get_digits(succesful_pledge_elem.getText())
+        successful_goal_elem = soup.select_one('div[class="type-12 medium navy-500"] > span[class="money"]')
+        data["goal"] = data["converted_goal"] = get_digits(successful_goal_elem.getText())   
+    else:
+        # Get conversion rate of currency if necessary for goal and pledged amounts.
+        curr_elems = soup.select('div[class="input__currency-conversion"]')
+        # Check if currency conversions are present.
+        if len(curr_elems) > 0:
+            curr_elem = curr_elems[0]
+            back_elem = soup.select('input[name="backing[amount]"]')[0]
 
-    # Fix symbols to one form if they have known alternate forms.
-    fixed_symbols = {"USD": "$", "US$": "$", "Â£": "£", "â‚¬": "€"}
-    if original_curr_symbol in fixed_symbols.keys():
-        original_curr_symbol = fixed_symbols[original_curr_symbol]
-    if converted_curr_symbol in fixed_symbols.keys():
-        converted_curr_symbol = fixed_symbols[converted_curr_symbol]
+            converted_curr_amount = get_digits(curr_elem.contents[1].getText())
+            original_curr_amount = get_digits(back_elem["value"])
+            conversion_rate = converted_curr_amount / original_curr_amount
 
-    data["original_curr"] = original_curr_symbol
-    data["converted_curr"] = converted_curr_symbol
+            # Get symbols for both currencies.
+            converted_curr_symbol = get_str(curr_elem.contents[1].getText())
+            original_curr_symbol = soup.select_one('span[class="new-form__currency-box__text"]').getText().strip()
 
-    # Project goal.
-    try:
-        goal_elem = soup.select('span[class="inline-block-sm hide"]')
-        goal = get_digits(goal_elem[0].contents[1].getText(), "int") 
-        converted_goal = goal
-        if conversion_needed:
-            converted_goal = converted_goal * conversion_rate
-    # Goal data missing.
-    except:
-        goal = ""
-        converted_goal = ""
-    finally:
-        data["goal"] = goal
-        data["converted_goal"] = converted_goal
+            conversion_needed = True
+            data["conversion_rate"] = conversion_rate
 
-    # Pledged amount.
-    try:
-        pledged_elem = soup.select('span[class="ksr-green-700"]')
-        pledged = get_digits(pledged_elem[0].getText()) 
-        converted_pledged = pledged
-        if conversion_needed:
-            converted_pledged = converted_pledged * conversion_rate
-    # Pledged amount data missing.
-    except IndexError:
-        pledged = ""
-        converted_pledged = ""
-    finally: 
-        data["pledged"] = pledged
-        data["converted_pledged"] = converted_pledged
+        # No need for conversion.
+        else:
+            data["conversion_rate"] = 1
+            original_curr_symbol = converted_curr_symbol = re.findall("window.current_currency = '(\w+)'", str(soup))[0].strip()
+
+        # Fix symbols to one form if they have known alternate forms.
+        fixed_symbols = {"USD": "$", "US$": "$", "Â£": "£", "â‚¬": "€"}
+        if original_curr_symbol in fixed_symbols.keys():
+            original_curr_symbol = fixed_symbols[original_curr_symbol]
+        if converted_curr_symbol in fixed_symbols.keys():
+            converted_curr_symbol = fixed_symbols[converted_curr_symbol]
+
+        data["original_curr"] = original_curr_symbol
+        data["converted_curr"] = converted_curr_symbol
+
+        # Project goal.
+        try:
+            goal_elem = soup.select('span[class="inline-block-sm hide"]')
+            goal = get_digits(goal_elem[0].contents[1].getText(), "int") 
+            converted_goal = goal
+            if conversion_needed:
+                converted_goal = converted_goal * conversion_rate
+        # Goal data missing.
+        except:
+            goal = ""
+            converted_goal = ""
+        finally:
+            data["goal"] = goal
+            data["converted_goal"] = converted_goal
+
+        # Pledged amount.
+        try:
+            pledged_elem = soup.select('span[class="ksr-green-700"]')
+            pledged = get_digits(pledged_elem[0].getText()) 
+            converted_pledged = pledged
+            if conversion_needed:
+                converted_pledged = converted_pledged * conversion_rate
+        # Pledged amount data missing.
+        except IndexError:
+            pledged = ""
+            converted_pledged = ""
+        finally: 
+            data["pledged"] = pledged
+            data["converted_pledged"] = converted_pledged
 
     # Campaign start time. Will be extracted from updates files
     # so just leave space for it to be added later.
@@ -368,8 +414,8 @@ def extract_campaign_data(file_path):
             cat_str = spc_cat_loc_data[0]
             location = spc_cat_loc_data[1]
             pwl = 0
-            make100 = 0 
-            
+            make100 = 0
+
         category, subcategory = get_category_data(cat_str)
 
     # Category or location missing.
@@ -385,6 +431,13 @@ def extract_campaign_data(file_path):
         data["category"] = category
         data["subcategory"] = subcategory
         data["location"] = location
+
+    # Try alternate tags for successful campaigns if category/location
+    # is missing.
+    cat_loc_elems = soup.select('a[class="grey-dark mr3 nowrap type-12"]')
+    if len(cat_loc_elems) != 0:
+        data["location"] = cat_loc_elems[0].getText().strip()
+        data["category"], data["subcategory"] = get_category_data(cat_loc_elems[1].getText().strip())
 
     # Number of projects created.
     try:
@@ -442,28 +495,6 @@ def extract_campaign_data(file_path):
     finally:
         data["risk"] = risk
 
-    # Status of campaign.
-    data["status"] = ""
-    # Only succesful campaigns have the below tag.
-    succesful_elem = soup.select_one('div[class="NS_campaigns__spotlight_stats"]')
-    if succesful_elem == None:
-        time_left_elem = soup.select_one('span[class="block type-16 type-24-md medium soft-black"]')
-        # Unsuccesful campaign
-        if time_left_elem == None or time_left_elem.getText() == "0":
-            fin_elem = soup.select_one('div[class="normal type-18"]')
-            if fin_elem != None: 
-                if "Unsuccessful" in fin_elem.getText():
-                    data["status"] = "Unsuccessful"
-                else:
-                    print("Check status:", file_path, fin_elem.getText())
-                    data["status"] = fin_elem.getText()
-
-        # Live campaign
-        else:
-            data["status"] = "Live"
-    else:
-        data["status"] = "Successful"
-
     # Pledges. rd_gone is 0 for available pledges and 1 for complete pledges. 
     all_pledge_elems = []
     available_rd_gone = 0
@@ -485,10 +516,10 @@ def extract_campaign_data(file_path):
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
+                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
                 r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Succesful campaign
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
