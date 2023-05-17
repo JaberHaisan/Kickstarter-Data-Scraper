@@ -80,6 +80,7 @@ def get_digits(string, conv="float"):
 def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
     Dict will contain:
+    rd_id: Pledge unique id.
     rd_title: Pledge title
     rd_price: Pledge price
     rd_desc: Pledge description 
@@ -97,6 +98,7 @@ def get_pledge_data(bs4_tag, index=0):
     pledge_data = {}
     i = str(index)
 
+    pledge_data['rd_id_' + i] = bs4_tag['data-reward-id']
     pledge_data['rd_title_' + i] = bs4_tag.select_one('h3[class="pledge__title"]').getText().strip()
     pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText()) 
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('div[class="pledge__reward-description pledge__reward-description--expanded"]').getText().replace('\n', '')[:-4]
