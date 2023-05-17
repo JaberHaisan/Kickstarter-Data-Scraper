@@ -14,6 +14,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import pandas as pd
 
+# Toggle to turn off live scraping. 
+OFFLINE = True
+
 def extract_html_files(path, data_folder):
     """Extracts all files in the zipped folders in path
     to the given data folder (created if it doesn't exist) and
@@ -85,7 +88,8 @@ def get_pledge_data(bs4_tag, index=0):
     rd_shipping_location: Pledge Shipping location. Empty string if no shipping location.
     rd_backers: Total number of backers.
     rd_limit: Limit in number of backers of pledge. Empty string if there are no
-    limits.
+    limits. For unavailable pledges, limit = backers because they don't show limits.
+    rd_gone: Status of pledge. If it is no longer available has a value of 1 and otherwise 0.
 
     Inputs:
     bs4_tag [bs4.element.Tag] - A tag of a kickstarter Pledge.
@@ -123,12 +127,21 @@ def get_pledge_data(bs4_tag, index=0):
     finally:
         pledge_data["rd_backers_" + i] = rd_backers
 
-    try:
-        rd_limit = get_digits(bs4_tag.select_one('span[class="pledge__limit"]').getText().split()[-1])
-    except AttributeError:
+    rd_limit_elem = bs4_tag.select_one('span[class="pledge__limit"]')
+    if rd_limit_elem != None:
+        rd_limit = get_digits(rd_limit_elem.getText().split()[-1])
+    else:
         rd_limit = ""
-    finally:
-        pledge_data["rd_limit_" + i] = rd_limit
+    pledge_data["rd_limit_" + i] = rd_limit
+
+    # Below tag is there only for pledges which have reached their limit.
+    # These pledges don't show the limit so their limit = num of backers 
+    rd_gone_elem = bs4_tag.select_one('span[class="pledge__limit pledge__limit--all-gone mr2"]')
+    if rd_gone_elem != None:
+        pledge_data["rd_limit_" + i] = rd_backers
+        pledge_data["rd_gone_" + i] = 1
+    else:
+        pledge_data["rd_gone_" + i] = 0
 
     return pledge_data
 
@@ -170,6 +183,7 @@ def get_category_data(cat_str):
 
 def extract_update_files_data(files):
     """"Takes a list of update files of the same root and returns a tuple of url and startdate."""
+    date = ("", "", "")
     for file in files:
         with open(file, encoding='utf8') as infile:
             soup = BeautifulSoup(infile, "lxml")
@@ -183,23 +197,26 @@ def extract_update_files_data(files):
         # First file has the start date so no point in checking the other files
         if date_elem != None:
             dt = datetime.strptime(date_elem.getText(), "%B %d, %Y")
+            date = (dt.day, dt.month, dt.year)
             break
-    # None of the saved files had the start date so take it from the live page.
+    # None of the saved files had the start date so take it from the live page
+    # if not offline.
     else:
-        update_url = url + "/posts"
-        driver = webdriver.Chrome()
-        driver.get(update_url)
-        # Wait at most 10s for required tag to load and otherwise raise a TimeoutException.
-        date_selector = 'div[class="type-11 type-14-sm text-uppercase"]'
-        try:
-            element = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, date_selector))
-            )
-        finally:
-            dt = datetime.strptime(driver.find_element(By.CSS_SELECTOR, date_selector).text, "%B %d, %Y")
-            driver.quit()
+        if not OFFLINE:
+            update_url = url + "/posts"
+            driver = webdriver.Chrome()
+            driver.get(update_url)
+            # Wait at most 10s for required tag to load and otherwise raise a TimeoutException.
+            date_selector = 'div[class="type-11 type-14-sm text-uppercase"]'
+            try:
+                element = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, date_selector))
+                )
+            finally:
+                dt = datetime.strptime(driver.find_element(By.CSS_SELECTOR, date_selector).text, "%B %d, %Y")
+                date = (dt.day, dt.month, dt.year)
+                driver.quit()
 
-    date = (dt.day, dt.month, dt.year)
     return (url, date)
 
 def extract_campaign_data(file_path):
@@ -341,7 +358,8 @@ def extract_campaign_data(file_path):
             if conversion_needed:
                 converted_pledged = pledged * conversion_rate
             else:
-                converted_pledged = pledged          
+                converted_pledged = pledged         
+
     elif status in {successful, unsuccessful}:
         if status == successful:
             completed_goal_selector = 'div[class="type-12 medium navy-500"] > span[class="money"]'
@@ -359,7 +377,7 @@ def extract_campaign_data(file_path):
 
         if completed_pledge_elem != None:
             pledged = converted_pledged = get_digits(completed_pledge_elem.getText())
-        
+
     data["original_curr_symbol"] = original_curr_symbol
     data["converted_curr_symbol"] = converted_curr_symbol   
     data["conversion_rate"] = conversion_rate
@@ -390,7 +408,7 @@ def extract_campaign_data(file_path):
             time_str = end_time_elem[1].getText()
             dt = datetime.strptime(time_str, "%b %d, %Y")
             endday, endmonth, endyear = dt.day, dt.month, dt.year
-    
+
     elif status == unsuccessful:
         end_time_elem = soup.select_one('div[class="type-14 pt1"]')
         if end_time_elem != None:
@@ -516,19 +534,14 @@ def extract_campaign_data(file_path):
 
     # Pledges. rd_gone is 0 for available pledges and 1 for complete pledges. 
     all_pledge_elems = []
-    available_rd_gone = 0
-    complete_rd_gone = 1
-
-    # Tuples of (pledge_elem, rd_gone).
-    all_pledge_elems.extend([(elem, available_rd_gone) for elem in soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')])
-    all_pledge_elems.extend([(elem, complete_rd_gone) for elem in soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')])
-    all_pledge_elems.extend([(elem, complete_rd_gone) for elem in soup.select('li[class="hover-group pledge--inactive pledge-selectable-sidebar"]')])
+    all_pledge_elems.extend([pledge_elem for pledge_elem in soup.select('li[class="hover-group js-reward-available pledge--available pledge-selectable-sidebar"]')])
+    all_pledge_elems.extend([pledge_elem for pledge_elem in soup.select('li[class="hover-group pledge--all-gone pledge-selectable-sidebar"]')])
+    all_pledge_elems.extend([pledge_elem for pledge_elem in soup.select('li[class="hover-group pledge--inactive pledge-selectable-sidebar"]')])
 
     data["num_rewards"] = len(all_pledge_elems)
 
-    for i, (pledge_elem, rd_gone) in enumerate(all_pledge_elems):
+    for i, pledge_elem in enumerate(all_pledge_elems):
         data |= get_pledge_data(pledge_elem, i)
-        data |= {"rd_gone_" + str(i): rd_gone}
 
     return data
 
