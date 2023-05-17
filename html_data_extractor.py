@@ -243,6 +243,12 @@ def extract_campaign_data(file_path):
 
     # Status of campaign.
     status = ""
+
+    # Status strings (to make any changes to status easier).
+    successful = "Successful"
+    unsuccessful = "Unsuccessful"
+    live = "Live"
+
     # Only succesful campaigns have the below tag.
     successful_stats_elem = soup.select_one('div[class="NS_campaigns__spotlight_stats"]')
     if successful_stats_elem == None:
@@ -251,23 +257,23 @@ def extract_campaign_data(file_path):
         if time_left_elem == None or time_left_elem.getText() == "0":
             fin_elem = soup.select_one('div[class="normal type-18"]')
             if fin_elem != None: 
-                if "Unsuccessful" in fin_elem.getText():
-                    status = "Unsuccessful"
+                if unsuccessful in fin_elem.getText():
+                    status = unsuccessful
                 else:
                     print("Check status:", file_path, fin_elem.getText())
                     status = fin_elem.getText()
 
         # Live campaign
         else:
-            status = "Live"
+            status = live
     else:
-        status = "Successful"
+        status = successful
 
     data["status"] = status
     
     # Backers.
     backers = ""
-    if status != "Successful":
+    if status != successful:
         backers_selector = 'div[class="block type-16 type-24-md medium soft-black"]'
     else: 
         backers_selector = 'div[class="mb0"] > h3[class="mb0"]'
@@ -286,7 +292,7 @@ def extract_campaign_data(file_path):
 
     # Some tags for campaigns at different statuses are distinct for
     # currency symbols, goals and pledges.
-    if status == "Live":
+    if status == live:
         # Boolean to toggle for currency conversion.
         conversion_needed = False
 
@@ -336,11 +342,11 @@ def extract_campaign_data(file_path):
                 converted_pledged = pledged * conversion_rate
             else:
                 converted_pledged = pledged          
-    elif status in {"Successful", "Unsuccessful"}:
-        if status == "Successful":
+    elif status in {successful, unsuccessful}:
+        if status == successful:
             completed_goal_selector = 'div[class="type-12 medium navy-500"] > span[class="money"]'
             completed_pledge_selector = 'h3[class="mb0"] > span[class="money"]'
-        elif status == "Unsuccessful":
+        elif status == unsuccessful:
             completed_goal_selector = 'span[class="inline-block-sm hide"] > span[class="money"]'
             completed_pledge_selector = 'span[class="soft-black"]'
 
@@ -369,18 +375,32 @@ def extract_campaign_data(file_path):
     data["startyear"] = ""
 
     # Campaign end time.
-    try:
-        end_time_elem = soup.select('p[class="mb3 mb0-lg type-12"]')[0]
-        time_str = end_time_elem.getText()[80:]
-        dt = datetime.strptime(time_str, "%B %d %Y %I:%M %p %Z %z.")
-        endday, endmonth, endyear = dt.day, dt.month, dt.year
-    # End time missing.
-    except IndexError:
-        endday, endmonth, endyear = "", "", ""
-    finally:
-        data["endday"] = endday
-        data["endmonth"] = endmonth
-        data["endyear"] = endyear
+    endday, endmonth, endyear = "", "", ""
+
+    if status == live:
+        end_time_elem = soup.select_one('p[class="mb3 mb0-lg type-12"]')
+        if end_time_elem != None:
+            time_str = end_time_elem.getText()[80:]
+            dt = datetime.strptime(time_str, "%B %d %Y %I:%M %p %Z %z.")
+            endday, endmonth, endyear = dt.day, dt.month, dt.year
+
+    elif status == successful:
+        end_time_elem = soup.select('time[data-format="ll"]')
+        if len(end_time_elem) >= 2:
+            time_str = end_time_elem[1].getText()
+            dt = datetime.strptime(time_str, "%b %d, %Y")
+            endday, endmonth, endyear = dt.day, dt.month, dt.year
+    
+    elif status == unsuccessful:
+        end_time_elem = soup.select_one('div[class="type-14 pt1"]')
+        if end_time_elem != None:
+            time_str = end_time_elem.getText()[46:]
+            dt = datetime.strptime(time_str, "%a, %B %d %Y %I:%M %p %Z %z")
+            endday, endmonth, endyear = dt.day, dt.month, dt.year
+
+    data["endday"] = endday
+    data["endmonth"] = endmonth
+    data["endyear"] = endyear
 
     # Number of images and photos.
     photos, videos = 0, 0
@@ -515,11 +535,11 @@ def extract_campaign_data(file_path):
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
+                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Succesful campaign
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Successful campaign
                 ]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
