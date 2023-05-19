@@ -14,37 +14,57 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import pandas as pd
 
+# Toggle to turn off unzipping if already done.
+UNZIP = False
 # Toggle to turn off live scraping. 
 OFFLINE = True
 
-def extract_html_files(path, data_folder):
+def extract_html_files(path, data_folder, unzip=True):
     """Extracts all files in the zipped folders in path
     to the given data folder (created if it doesn't exist) and
     returns a tuple of lists of the html file paths according to
-    their type.
+    their type. If unzip is set to False, it will not unzip the
+    folders in path and will just extract html files in
+    path/data_folder.
 
     Inputs:
     path [str] - Path to zip files.
-    data_folder [str] - Path to folder to store unzipped data."""
+    data_folder [str] - Path to folder to store unzipped data.
+    unzip [boolean] - Whether to unzip files at path or not."""
     data_folder_path = os.path.join(path, data_folder)
 
-    # Make data folder if it doesn't exist.
-    os.makedirs(data_folder_path, exist_ok=True)
+    if unzip:
+        # Make data folder if it doesn't exist.
+        os.makedirs(data_folder_path, exist_ok=True)
 
-    # Find all zip files in current path and extract them to data_folder.
-    zip_files = []
-    for file in os.listdir(path):
-        if file.endswith(".zip"):
-            zip_files.append(file)
+        # Find all zip files in current path and extract them to data_folder.
+        zip_files = []
+        for file in os.listdir(path):
+            if file.endswith(".zip"):
+                zip_files.append(file)
 
-    for zip_file in zip_files:
-        with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
-            zip_ref.extractall(data_folder_path)
+        for zip_file in zip_files:
+            with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
+                zip_ref.extractall(data_folder_path)
+
+        # Unzip any files in inside data_folder.
+        data_folder_zips = []
+        for (root, dirs, files) in os.walk(data_folder_path):
+            for file in files:
+                if file.endswith(".zip"):
+                    data_folder_zips.append(os.path.join(root, file))
+        
+        # Unzip files inside original directory and delete the zips.
+        for zip_file in data_folder_zips:
+            file_dir = os.path.dirname(zip_file)
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                zip_ref.extractall(file_dir)
+            os.remove(zip_file)
 
     # Files to ignore.
     ignore_set = {"community", "faqs", "comments"}
 
-    # Get paths of all html files in the data folder.
+    # # Get paths of all html files in the data folder.
     campaign_files = []
     update_files = []
     for (root, dirs, files) in os.walk(data_folder_path):
@@ -77,7 +97,7 @@ def get_digits(string, conv="float"):
         res = re.findall(r'\d+', string)
         return int("".join(res))
 
-def get_pledge_data(bs4_tag, index=0):
+def get_pledge_data(file_path, bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
     Dict will contain:
     rd_id: Pledge unique id.
@@ -130,9 +150,9 @@ def get_pledge_data(bs4_tag, index=0):
         pledge_data["rd_backers_" + i] = rd_backers
 
     rd_limit_elem = bs4_tag.select_one('span[class="pledge__limit"]')
-    if rd_limit_elem != None:
+    try:
         rd_limit = get_digits(rd_limit_elem.getText().split()[-1])
-    else:
+    except:
         rd_limit = ""
     pledge_data["rd_limit_" + i] = rd_limit
 
@@ -543,7 +563,7 @@ def extract_campaign_data(file_path):
     data["num_rewards"] = len(all_pledge_elems)
 
     for i, pledge_elem in enumerate(all_pledge_elems):
-        data |= get_pledge_data(pledge_elem, i)
+        data |= get_pledge_data(file_path, pledge_elem, i)
 
     return data
 
@@ -571,7 +591,7 @@ if __name__ == "__main__":
         # Folder which will contain unzipped data.
         data_folder = "Unzipped"
 
-        campaign_files, update_files = extract_html_files(path, data_folder)
+        campaign_files, update_files = extract_html_files(path, data_folder, UNZIP)
 
         # Extract data from html files.
         start = time.time()
