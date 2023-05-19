@@ -5,6 +5,7 @@ import multiprocessing
 from datetime import datetime
 import re
 from collections import defaultdict
+import logging
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -13,7 +14,10 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from bs4 import BeautifulSoup
 import pandas as pd
+import tqdm
 
+# Set logging.
+logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 # Toggle to turn off unzipping if already done.
 UNZIP = False
 # Toggle to turn off live scraping. 
@@ -37,17 +41,19 @@ def extract_html_files(path, data_folder, unzip=True):
         # Make data folder if it doesn't exist.
         os.makedirs(data_folder_path, exist_ok=True)
 
+        logging.info("Unzipping files in path...")
         # Find all zip files in current path and extract them to data_folder.
         zip_files = []
         for file in os.listdir(path):
             if file.endswith(".zip"):
                 zip_files.append(file)
 
-        for zip_file in zip_files:
+        for zip_file in tqdm.tqdm(zip_files):
             with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
                 zip_ref.extractall(data_folder_path)
 
         # Unzip any files in inside data_folder.
+        logging.info("Unzipping nested zips...")
         data_folder_zips = []
         for (root, dirs, files) in os.walk(data_folder_path):
             for file in files:
@@ -55,7 +61,7 @@ def extract_html_files(path, data_folder, unzip=True):
                     data_folder_zips.append(os.path.join(root, file))
         
         # Unzip files inside original directory and delete the zips.
-        for zip_file in data_folder_zips:
+        for zip_file in tqdm.tqdm(data_folder_zips):
             file_dir = os.path.dirname(zip_file)
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 zip_ref.extractall(file_dir)
@@ -594,9 +600,9 @@ if __name__ == "__main__":
         campaign_files, update_files = extract_html_files(path, data_folder, UNZIP)
 
         # Extract data from html files.
-        start = time.time()
 
         # Process update files.
+        logging.info("Processing update files...")
         roots = defaultdict(list)
         for file_path in  update_files:
             roots[os.path.dirname(file_path)].append(file_path)
@@ -606,7 +612,8 @@ if __name__ == "__main__":
         update_data = dict(update_data)
 
         # Process campaign files.
-        campaign_data = pool.map(extract_campaign_data, campaign_files, chunksize=10)
+        logging.info("Processing campaign files...")
+        campaign_data = list(tqdm.tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=100), total=len(campaign_files)))
         pool.close()
         pool.join()
 
@@ -614,14 +621,8 @@ if __name__ == "__main__":
         all_data = []
         for campaign_datum in campaign_data:
             url = campaign_datum["url"]
-            campaign_datum["startday"] = update_data[url][0]
-            campaign_datum["startmonth"] = update_data[url][1]
-            campaign_datum["startyear"] = update_data[url][2]
-            
+            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
             all_data.append(campaign_datum)
-
-        end = time.time()
-        print(f"Took {end-start}s to process {len(campaign_files) + len(update_files)} files.")
 
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
