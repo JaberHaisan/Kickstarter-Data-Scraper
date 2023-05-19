@@ -13,7 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from bs4 import BeautifulSoup
 import pandas as pd
-import tqdm
+from tqdm import tqdm
 
 # Set logging.
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
@@ -47,7 +47,7 @@ def extract_html_files(path, data_folder, unzip=True):
             if file.endswith(".zip"):
                 zip_files.append(file)
 
-        for zip_file in tqdm.tqdm(zip_files):
+        for zip_file in tqdm(zip_files):
             with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
                 zip_ref.extractall(data_folder_path)
 
@@ -60,7 +60,7 @@ def extract_html_files(path, data_folder, unzip=True):
                     data_folder_zips.append(os.path.join(root, file))
         
         # Unzip files inside original directory and delete the zips.
-        for zip_file in tqdm.tqdm(data_folder_zips):
+        for zip_file in tqdm(data_folder_zips):
             file_dir = os.path.dirname(zip_file)
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 zip_ref.extractall(file_dir)
@@ -216,7 +216,7 @@ def extract_update_files_data(files):
     """"Takes a list of update files of the same root and returns a tuple of url and startdate."""
     date = ("", "", "")
     for file in files:
-        with open(file, encoding='utf8') as infile:
+        with open(file, encoding='utf8', errors="backslashreplace") as infile:
             soup = BeautifulSoup(infile, "lxml")
         
         # Url
@@ -256,13 +256,8 @@ def extract_campaign_data(file_path):
     
     Inputs:
     file_path [str] - Path to html file."""
-    try:
-        with open(file_path, encoding='utf8') as infile:
-            soup = BeautifulSoup(infile, "lxml")
-    except:
-        print(file_path)
-        return None
-
+    with open(file_path, encoding='utf8', errors="backslashreplace") as infile:
+        soup = BeautifulSoup(infile, "lxml")
     data = {}
 
     # Date and time accessed.
@@ -620,7 +615,7 @@ if __name__ == "__main__":
 
         # Process campaign files.
         logging.info("Processing campaign files...")
-        campaign_data = list(tqdm.tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
+        campaign_data = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
         pool.close()
         pool.join()
 
