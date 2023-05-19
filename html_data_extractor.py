@@ -249,12 +249,16 @@ def extract_update_files_data(files):
 
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
-    it in a dictionary.
+    it in a dictionary. Returns None if file was not readable.
     
     Inputs:
     file_path [str] - Path to html file."""
-    with open(file_path, encoding='utf8') as infile:
-        soup = BeautifulSoup(infile, "lxml")
+    try:
+        with open(file_path, encoding='utf8') as infile:
+            soup = BeautifulSoup(infile, "lxml")
+    except:
+        print(file_path)
+        return None
 
     data = {}
 
@@ -267,8 +271,8 @@ def extract_campaign_data(file_path):
     data["time_accessed"] = time
 
     # Url
-    url_elem = soup.select('meta[property="og:url"]')
-    data["url"] = url_elem[0]["content"]
+    url_elem = soup.select_one('meta[property="og:url"]')
+    data["url"] = url_elem["content"]
 
     # Project Id and Creator Id.
     creator_id, project_id = data["url"].split("/")[-2:]
@@ -276,7 +280,7 @@ def extract_campaign_data(file_path):
     data["creator_id"] = creator_id
 
     # Creator, Title and Blurb
-    meta_elem = soup.select('meta[name="description"]')[0]
+    meta_elem = soup.select_one('meta[name="description"]')
     lines = meta_elem["content"].splitlines()
     creator, title = lines[0].split(" is raising funds for ")
     title = title.strip().replace(" on Kickstarter!", "")
@@ -511,30 +515,30 @@ def extract_campaign_data(file_path):
 
     # Number of projects created.
     try:
-        project_num_elem = soup.select('a[class="dark-grey-500 keyboard-focusable"]')
+        project_num_elem = soup.select_one('a[class="dark-grey-500 keyboard-focusable"]')
         # Try other possible tag for project num if necessary.
-        if len(project_num_elem) == 0:
-            project_num_elem = soup.select('span[class="dark-grey-500"]')   
+        if project_num_elem == None:
+            project_num_elem = soup.select_one('span[class="dark-grey-500"]')   
 
-        projects_num = project_num_elem[0].getText().split()[0]
+        projects_num = project_num_elem.getText().split()[0]
         if projects_num == "First":
             projects_num = "1"
     # Project number missing.
-    except IndexError:
+    except:
         projects_num = ""
     finally:
         data["num_projects"] = projects_num
 
     # Number of comments.
-    comments_elem = soup.select('data[itemprop="Project[comments_count]"]')
-    data["num_comments"] = comments_elem[0].getText()
+    comments_elem = soup.select_one('data[itemprop="Project[comments_count]"]')
+    data["num_comments"] = comments_elem.getText()
     
     # Number of updates.
-    updates_elem = soup.select('a[data-content="updates"]')[0]
+    updates_elem = soup.select_one('a[data-content="updates"]')
     data["num_updates"] = updates_elem.contents[1].getText()
 
     # Number of faq.
-    faq_elem = soup.select('a[data-content="faqs"]')[0]
+    faq_elem = soup.select_one('a[data-content="faqs"]')
     # Kickstarter does not show 0 if there is no faq.
     if len(faq_elem.contents) > 1:
         data["num_faq"] = faq_elem.contents[1].getText()
@@ -620,9 +624,10 @@ if __name__ == "__main__":
         # Merge campaign and update data.
         all_data = []
         for campaign_datum in campaign_data:
-            url = campaign_datum["url"]
-            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
-            all_data.append(campaign_datum)
+            if campaign_datum != None:
+                url = campaign_datum["url"]
+                campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
+                all_data.append(campaign_datum)
 
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
