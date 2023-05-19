@@ -1,6 +1,5 @@
 import os
 import zipfile
-import time
 import multiprocessing
 from datetime import datetime
 import re
@@ -85,9 +84,13 @@ def extract_html_files(path, data_folder, unzip=True):
     
     return campaign_files, update_files
 
-def get_str(string):
-    """Returns a string without any digits."""
-    return "".join([char for char in string if not char.isdigit()]).strip()
+def get_str(string, extra):
+    """Returns a string without any digits.
+    
+    Inputs:
+    string [str] - Any string.
+    extra [set] - Extra set of characters to exclude."""
+    return "".join([char for char in string if not (char.isdigit() or char in extra)]).strip()
 
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
@@ -357,7 +360,7 @@ def extract_campaign_data(file_path):
             conversion_rate = converted_curr_amount / original_curr_amount
 
             # Get symbols for both currencies.
-            converted_curr_symbol = get_str(curr_elem.contents[1].getText())
+            converted_curr_symbol = get_str(curr_elem.contents[1].getText(), {'.', ','})
             original_curr_symbol = soup.select_one('span[class="new-form__currency-box__text"]').getText().strip()
 
             conversion_needed = True
@@ -375,7 +378,7 @@ def extract_campaign_data(file_path):
             converted_curr_symbol = fixed_symbols[converted_curr_symbol]
 
         # Project goal.
-        goal_elem = soup.select_one('span[class="inline-block-sm hide"]')
+        goal_elem = soup.select_one('span[class="block dark-grey-500 type-12 type-14-md lh3-lg"] > span')
         if goal_elem != None:
             goal = get_digits(goal_elem.contents[1].getText(), "int") 
             if conversion_needed:
@@ -404,8 +407,8 @@ def extract_campaign_data(file_path):
         completed_goal_elem = soup.select_one(completed_goal_selector)
         completed_pledge_elem = soup.select_one(completed_pledge_selector)
         if completed_goal_elem != None:
-            original_curr_symbol = converted_curr_symbol = get_str(completed_goal_elem.getText())
-            goal = converted_goal = get_digits(completed_goal_elem.getText())
+            original_curr_symbol = converted_curr_symbol = get_str(completed_goal_elem.getText(), {'.', ','})
+            goal = converted_goal = get_digits(completed_goal_elem.getText(), "int")
 
         if completed_pledge_elem != None:
             pledged = converted_pledged = get_digits(completed_pledge_elem.getText())
@@ -629,6 +632,7 @@ if __name__ == "__main__":
                 campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
                 all_data.append(campaign_datum)
 
+        logging.info("Writing data to file...")
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
         df.to_csv('results.csv', index=False)
