@@ -103,7 +103,7 @@ def get_digits(string, conv="float"):
         res = re.findall(r'\d+', string)
         return int("".join(res))
 
-def get_pledge_data(file_path, bs4_tag, index=0):
+def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
     Dict will contain:
     rd_id: Pledge unique id.
@@ -279,7 +279,7 @@ def extract_campaign_data(file_path):
     meta_elem = soup.select('meta[name="description"]')[0]
     lines = meta_elem["content"].splitlines()
     creator, title = lines[0].split(" is raising funds for ")
-    title = title.strip()
+    title = title.strip().replace(" on Kickstarter!", "")
     blurb = lines[-1].strip()
 
     data["title"] = title
@@ -569,7 +569,7 @@ def extract_campaign_data(file_path):
     data["num_rewards"] = len(all_pledge_elems)
 
     for i, pledge_elem in enumerate(all_pledge_elems):
-        data |= get_pledge_data(file_path, pledge_elem, i)
+        data |= get_pledge_data(pledge_elem, i)
 
     return data
 
@@ -613,7 +613,7 @@ if __name__ == "__main__":
 
         # Process campaign files.
         logging.info("Processing campaign files...")
-        campaign_data = list(tqdm.tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=100), total=len(campaign_files)))
+        campaign_data = list(tqdm.tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
         pool.close()
         pool.join()
 
