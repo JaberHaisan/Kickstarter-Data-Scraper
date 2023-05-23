@@ -25,7 +25,7 @@ UNZIP = False
 OFFLINE = True
 # Control how many campaign files to go through at most. Set 'All' for all
 # or an int number of files.
-FILE_NUM = 15000
+FILE_NUM = 6000
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 
@@ -206,13 +206,11 @@ def get_category_data(cat_str):
                 'Technology': {'Wearables', 'Makerspaces', '3D Printing', 'Robots', 'Space Exploration', 'Hardware', 'Camera Equipment', 'Apps', 'Sound', 'Flight', 'Fabrication Tools', 'Software', 'DIY Electronics', 'Web', 'Gadgets'}, 
                 'Theater': {'Festivals', 'Spaces', 'Experimental', 'Musical', 'Comedy', 'Immersive', 'Plays'}}
     
-    category, subcategory = MISSING, MISSING
+    category, subcategory = cat_str, MISSING
 
     # No way to know subcategory from category.
-    if cat_str in categories.keys():
-        category = cat_str
-    else:
-        # Was given a subcategory so find it's category.
+    if cat_str not in categories.keys():
+        # Might be given a subcategory so try finding it's category.
         for category_name, subcategories in categories.items():
             if cat_str in subcategories:
                 category = category_name
@@ -478,24 +476,21 @@ def extract_campaign_data(file_path):
         spc_cat_loc_elems = soup.select('span[class="ml1"]')
         spc_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in spc_cat_loc_elems]
 
-        special = {"Project We Love", "Make 100"}
         # Project is part of Projects we Love or Make 100.
-        if spc_cat_loc_data[0] in special:
-            cat_str = spc_cat_loc_data[1]
-            location = spc_cat_loc_data[2]
-            if spc_cat_loc_data[0] == "Project We Love":
-                pwl = 1
-                make100 = 0
-            elif spc_cat_loc_data[0] == "Make 100":
-                pwl = 0
-                make100 = 1
+        if "Project We Love" in spc_cat_loc_data:
+            pwl = 1
         else:
-            cat_str = spc_cat_loc_data[0]
-            location = spc_cat_loc_data[1]
             pwl = 0
+
+        if "Make 100" in spc_cat_loc_data:
+            make100 = 1
+        else:
             make100 = 0
 
+        cat_str = spc_cat_loc_data[-2]
         category, subcategory = get_category_data(cat_str)
+
+        location = spc_cat_loc_data[-1]
 
     # Category or location missing.
     except IndexError:
@@ -585,11 +580,12 @@ def extract_campaign_data(file_path):
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Successful campaign
+                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
+                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Successful campaign
+                r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html", # Both Make 100 and Projects We Love
                 ]
     # Suspended campaign example: https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear
     # Cancelled campaign example: https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller
@@ -632,13 +628,14 @@ if __name__ == "__main__":
         pool.join()
 
         # Merge campaign and update data.
+        logging.info("Merging data...")
         all_data = []
         missing_data = []
         imp_columns = ['status', 'backers', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
                         'converted_goal', 'pledged', 'converted_pledged', 'startday', 'startmonth', 'startyear', 'endday', 
                         'endmonth', 'endyear', 'category', 'location', 'num_projects', 'num_comments', 'num_updates', 
                         'num_faq', 'description', 'risk']
-        for campaign_datum in campaign_data:
+        for campaign_datum in tqdm(campaign_data):
             url = campaign_datum["url"]
             campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
             all_data.append(campaign_datum)
