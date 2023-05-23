@@ -15,14 +15,21 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from tqdm import tqdm
 
+# Settings.
+
 # Set logging.
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 # Toggle to turn off unzipping if already done.
 UNZIP = False
 # Toggle to turn off live scraping. 
 OFFLINE = True
-# Control how many campaign files to go through. Set 'All' for all
-FILE_NUM = 5000
+# Control how many campaign files to go through at most. Set 'All' for all
+# or an int number of files.
+FILE_NUM = 15000
+# Set what value to enter in case of missing data. Default is ""
+MISSING = ""
+
+# Script.
 
 def extract_html_files(path, data_folder, unzip=True):
     """Extracts all files in the zipped folders in path
@@ -137,7 +144,7 @@ def get_pledge_data(bs4_tag, index=0):
     # Rewards list. If it does not exist, return empty string.
     rd_list = [elem.getText().replace('\n', '') for elem in bs4_tag.select('li[class="list-disc"]')]
     if len(rd_list) == 0:
-        pledge_data['rd_list_' + i] = ""
+        pledge_data['rd_list_' + i] = MISSING
     else:
         pledge_data['rd_list_' + i] = rd_list
     
@@ -150,7 +157,7 @@ def get_pledge_data(bs4_tag, index=0):
         pledge_data['rd_shipping_location_' + i] = pledge_detail_elems[1].getText()
     # No shipping location.
     else:
-        pledge_data['rd_shipping_location_' + i] = ""
+        pledge_data['rd_shipping_location_' + i] = MISSING
 
     try:
         rd_backers = get_digits(bs4_tag.select_one('span[class="pledge__backer-count"]').getText())
@@ -164,7 +171,7 @@ def get_pledge_data(bs4_tag, index=0):
     try:
         rd_limit = get_digits(rd_limit_elem.getText().split()[-1])
     except:
-        rd_limit = ""
+        rd_limit = MISSING
     pledge_data["rd_limit_" + i] = rd_limit
 
     # Below tag is there only for pledges which have reached their limit.
@@ -199,7 +206,7 @@ def get_category_data(cat_str):
                 'Technology': {'Wearables', 'Makerspaces', '3D Printing', 'Robots', 'Space Exploration', 'Hardware', 'Camera Equipment', 'Apps', 'Sound', 'Flight', 'Fabrication Tools', 'Software', 'DIY Electronics', 'Web', 'Gadgets'}, 
                 'Theater': {'Festivals', 'Spaces', 'Experimental', 'Musical', 'Comedy', 'Immersive', 'Plays'}}
     
-    category, subcategory = "", ""
+    category, subcategory = MISSING, MISSING
 
     # No way to know subcategory from category.
     if cat_str in categories.keys():
@@ -216,7 +223,7 @@ def get_category_data(cat_str):
 
 def extract_update_files_data(files):
     """"Takes a list of update files of the same root and returns a tuple of url and startdate."""
-    date = ("", "", "")
+    date = (MISSING, MISSING, MISSING)
     for file in files:
         with open(file, encoding='utf8', errors="backslashreplace") as infile:
             soup = BeautifulSoup(infile, "lxml")
@@ -283,7 +290,7 @@ def extract_campaign_data(file_path):
     meta_elem = soup.select_one('meta[name="description"]')
     lines = meta_elem["content"].splitlines()
     creator, title = lines[0].split(" is raising funds for ")
-    title = title.strip().replace(" on Kickstarter!", "")
+    title = title.strip().replace(" on Kickstarter!", MISSING)
     blurb = lines[-1].strip()
 
     data["title"] = title
@@ -291,26 +298,24 @@ def extract_campaign_data(file_path):
     data["blurb"] = blurb 
 
     # Status of campaign.
-    status = ""
+    status = MISSING
 
     # Status strings (to make any changes to status easier).
     successful = "Successful"
     unsuccessful = "Unsuccessful"
+    canceled = "Canceled"
+    suspended = "Suspended"
     live = "Live"
 
     # Only succesful campaigns have the below tag.
     successful_stats_elem = soup.select_one('div[class="NS_campaigns__spotlight_stats"]')
     if successful_stats_elem == None:
         time_left_elem = soup.select_one('span[class="block type-16 type-24-md medium soft-black"]')
-        # Unsuccesful campaign
+        # Unsuccesful/Canceled/Suspended campaign
         if time_left_elem == None or time_left_elem.getText() == "0":
             fin_elem = soup.select_one('div[class="normal type-18"]')
             if fin_elem != None: 
-                if unsuccessful in fin_elem.getText():
-                    status = unsuccessful
-                else:
-                    print("Check status:", file_path, fin_elem.getText())
-                    status = fin_elem.getText()
+                status = fin_elem.getText().split()[1]
 
         # Live campaign
         else:
@@ -321,7 +326,7 @@ def extract_campaign_data(file_path):
     data["status"] = status
     
     # Backers.
-    backers = ""
+    backers = MISSING
     if status != successful:
         backers_selector = 'div[class="block type-16 type-24-md medium soft-black"]'
     else: 
@@ -334,10 +339,10 @@ def extract_campaign_data(file_path):
     data["backers"] = backers
 
     # Default values.
-    original_curr_symbol = converted_curr_symbol = ""
+    original_curr_symbol = converted_curr_symbol = MISSING
     conversion_rate = 1
-    goal = converted_goal = ""
-    pledged = converted_pledged = ""
+    goal = converted_goal = MISSING
+    pledged = converted_pledged = MISSING
 
     # Some tags for campaigns at different statuses are distinct for
     # currency symbols, goals and pledges.
@@ -420,12 +425,12 @@ def extract_campaign_data(file_path):
 
     # Campaign start time. Will be extracted from updates files
     # so just leave space for it to be added later.
-    data["startday"] = ""
-    data["startmonth"] = ""
-    data["startyear"] = ""
+    data["startday"] = MISSING
+    data["startmonth"] = MISSING
+    data["startyear"] = MISSING
 
     # Campaign end time.
-    endday, endmonth, endyear = "", "", ""
+    endday, endmonth, endyear = MISSING, MISSING, MISSING
 
     if status == live:
         end_time_elem = soup.select_one('p[class="mb3 mb0-lg type-12"]')
@@ -494,11 +499,11 @@ def extract_campaign_data(file_path):
 
     # Category or location missing.
     except IndexError:
-        pwl = ""    
-        make100 = ""
-        category = ""
-        subcategory = ""
-        location = ""
+        pwl = MISSING    
+        make100 = MISSING
+        category = MISSING
+        subcategory = MISSING
+        location = MISSING
     finally:
         data["pwl"] = pwl
         data["make100"] = make100
@@ -525,7 +530,7 @@ def extract_campaign_data(file_path):
             projects_num = "1"
     # Project number missing.
     except:
-        projects_num = ""
+        projects_num = MISSING
     finally:
         data["num_projects"] = projects_num
 
@@ -550,7 +555,7 @@ def extract_campaign_data(file_path):
     if description_elem != None:
         description = description_elem.getText().strip()
     else:
-        description = ""
+        description = MISSING
     data["description"] = description
     
     # Risks.
@@ -561,7 +566,7 @@ def extract_campaign_data(file_path):
         # because they are the same for all projects.
         risk = "".join(risk.splitlines(keepends=True)[1:-1])
     else:
-        risk = ""
+        risk = MISSING
     data["risk"] = risk
 
     # Pledges. rd_gone is 0 for available pledges and 1 for complete pledges. 
@@ -583,9 +588,11 @@ def test_extract_campaign_data():
                 # r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
+                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
                 # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Successful campaign
                 ]
+    # Suspended campaign example: https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear
+    # Cancelled campaign example: https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
     df.to_csv('test.csv', index = False)
@@ -633,7 +640,7 @@ if __name__ == "__main__":
                         'num_faq', 'description', 'risk']
         for campaign_datum in campaign_data:
             url = campaign_datum["url"]
-            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
+            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
             all_data.append(campaign_datum)
 
             # Keep track of files which are missing data in important columns.
