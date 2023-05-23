@@ -21,6 +21,8 @@ logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 UNZIP = False
 # Toggle to turn off live scraping. 
 OFFLINE = True
+# Control how many campaign files to go through. Set 'All' for all
+FILE_NUM = 5000
 
 def extract_html_files(path, data_folder, unzip=True):
     """Extracts all files in the zipped folders in path
@@ -252,7 +254,7 @@ def extract_update_files_data(files):
 
 def extract_campaign_data(file_path):
     """"Extracts data from a kickstarter campaign page and returns
-    it in a dictionary. Returns None if file was not readable.
+    it in a dictionary. 
     
     Inputs:
     file_path [str] - Path to html file."""
@@ -594,12 +596,15 @@ if __name__ == "__main__":
 
     if not testing:
         # Path to zip files.
-        path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art"
+        path = r"F:\Kickstarter Zips"
 
         # Folder which will contain unzipped data.
         data_folder = "Unzipped"
 
         campaign_files, update_files = extract_html_files(path, data_folder, UNZIP)
+
+        if FILE_NUM != 'All':
+            campaign_files = campaign_files[:FILE_NUM]
 
         # Extract data from html files.
 
@@ -621,16 +626,27 @@ if __name__ == "__main__":
 
         # Merge campaign and update data.
         all_data = []
+        missing_data = []
+        imp_columns = ['status', 'backers', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
+                        'converted_goal', 'pledged', 'converted_pledged', 'startday', 'startmonth', 'startyear', 'endday', 
+                        'endmonth', 'endyear', 'category', 'location', 'num_projects', 'num_comments', 'num_updates', 
+                        'num_faq', 'description', 'risk']
         for campaign_datum in campaign_data:
-            if campaign_datum != None:
-                url = campaign_datum["url"]
-                campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
-                all_data.append(campaign_datum)
+            url = campaign_datum["url"]
+            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, ("", "", ""))
+            all_data.append(campaign_datum)
+
+            # Keep track of files which are missing data in important columns.
+            if any(campaign_datum[col] == "" for col in imp_columns):
+                missing_data.append(campaign_datum)
 
         logging.info("Writing data to file...")
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
         df.to_csv('results.csv', index=False)
+
+        missing_df = pd.DataFrame(missing_data)
+        missing_df.to_csv('missing.csv', index=False)
 
     else:
         test_extract_campaign_data()
