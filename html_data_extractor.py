@@ -5,6 +5,7 @@ from datetime import datetime
 import re
 from collections import defaultdict
 import logging
+import time
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -257,18 +258,37 @@ def extract_update_files_data(files):
 
     return (url, date)
 
-def extract_campaign_data(file_path):
-    """"Extracts data from a kickstarter campaign page and returns
+def get_live_soup(link):
+    """Returns a bs4 soup object of the given link.
+    
+    link [str] - A link to a website."""
+    driver = webdriver.Chrome()
+    driver.get(link)
+    time.sleep(2)
+    soup = BeautifulSoup(driver.page_source, "lxml")
+    driver.quit()
+
+    return soup
+
+def extract_campaign_data(path, is_link=False):
+    """Extracts data from a kickstarter campaign page and returns
     it in a dictionary. 
     
     Inputs:
-    file_path [str] - Path to html file."""
-    with open(file_path, encoding='utf8', errors="backslashreplace") as infile:
-        soup = BeautifulSoup(infile, "lxml")
+    path [str] - Path to html file.
+    is_link [boolean] - True if path is a link and False otherwise. False by default."""
+    if not is_link:
+        with open(path, encoding='utf8', errors="backslashreplace") as infile:
+            soup = BeautifulSoup(infile, "lxml")
+    else:
+        soup = get_live_soup(path)
+        # Prepare str for getting date and time. 
+        path = datetime.now().strftime('_%Y%m%d-%H%M%S.html')
+
     data = {}
 
     # Date and time accessed.
-    date_time_str = file_path.split("_")[-1]
+    date_time_str = path.split("_")[-1]
     date_time_str = date_time_str[:-5] 
     date, time = date_time_str.split("-")
 
@@ -329,7 +349,7 @@ def extract_campaign_data(file_path):
         backers_selector = 'div[class="block type-16 type-24-md medium soft-black"]'
     else: 
         backers_selector = 'div[class="mb0"] > h3[class="mb0"]'
-        
+
     backers_elem = soup.select_one(backers_selector)
     if backers_elem != None:
         backers = backers_elem.getText().strip()
@@ -436,19 +456,11 @@ def extract_campaign_data(file_path):
             time_str = end_time_elem.getText()[80:]
             dt = datetime.strptime(time_str, "%B %d %Y %I:%M %p %Z %z.")
             endday, endmonth, endyear = dt.day, dt.month, dt.year
-
-    elif status == successful:
+    else:
         end_time_elem = soup.select('time[data-format="ll"]')
         if len(end_time_elem) >= 2:
-            time_str = end_time_elem[1].getText()
-            dt = datetime.strptime(time_str, "%b %d, %Y")
-            endday, endmonth, endyear = dt.day, dt.month, dt.year
-
-    elif status == unsuccessful:
-        end_time_elem = soup.select_one('div[class="type-14 pt1"]')
-        if end_time_elem != None:
-            time_str = end_time_elem.getText()[46:]
-            dt = datetime.strptime(time_str, "%a, %B %d %Y %I:%M %p %Z %z")
+            time_str = end_time_elem[1].attrs['datetime'][:10]
+            dt = datetime.strptime(time_str, "%Y-%m-%d")
             endday, endmonth, endyear = dt.day, dt.month, dt.year
 
     data["endday"] = endday
@@ -534,8 +546,8 @@ def extract_campaign_data(file_path):
     data["num_comments"] = comments_elem.getText()
     
     # Number of updates.
-    updates_elem = soup.select_one('a[data-content="updates"]')
-    data["num_updates"] = updates_elem.contents[1].getText()
+    updates_elem = soup.select_one('a[data-content="updates"] > span[class="count"]')
+    data["num_updates"] = updates_elem.getText()
 
     # Number of faq.
     faq_elem = soup.select_one('a[data-content="faqs"]')
@@ -580,16 +592,16 @@ def extract_campaign_data(file_path):
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html", # Nothing special
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html", # Has pledge lists.
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html", # Has currency issue
-                # r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html", # Unsuccesful campaign
-                r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html", # Successful campaign
-                r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html", # Both Make 100 and Projects We Love
+                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html",), # Has pledge lists.
+                # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html",), # Has currency issue
+                (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccesful campaign
+                (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html",), # Successful campaign
+                # (r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html",), # Both Make 100 and Projects We Love
+                ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
+                ("https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller", True), # Canceled campaign
                 ]
-    # Suspended campaign example: https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear
-    # Cancelled campaign example: https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller
-    data = [extract_campaign_data(file_path) for file_path in file_paths]
+    data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
     df.to_csv('test.csv', index = False)
 
