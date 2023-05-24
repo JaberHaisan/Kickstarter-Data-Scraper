@@ -26,7 +26,7 @@ UNZIP = False
 OFFLINE = True
 # Control how many campaign files to go through at most. Set 'All' for all
 # or an int number of files.
-FILE_NUM = 6000
+FILE_NUM = 15_000
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 
@@ -264,7 +264,7 @@ def get_live_soup(link):
     link [str] - A link to a website."""
     driver = webdriver.Chrome()
     driver.get(link)
-    time.sleep(2)
+    time.sleep(1)
     soup = BeautifulSoup(driver.page_source, "lxml")
     driver.quit()
 
@@ -415,11 +415,11 @@ def extract_campaign_data(path, is_link=False):
             else:
                 converted_pledged = pledged         
 
-    elif status in {successful, unsuccessful}:
+    else:
         if status == successful:
             completed_goal_selector = 'div[class="type-12 medium navy-500"] > span[class="money"]'
             completed_pledge_selector = 'h3[class="mb0"] > span[class="money"]'
-        elif status == unsuccessful:
+        else:
             completed_goal_selector = 'span[class="inline-block-sm hide"] > span[class="money"]'
             completed_pledge_selector = 'span[class="soft-black"]'
 
@@ -484,46 +484,50 @@ def extract_campaign_data(path, is_link=False):
 
     # Make 100 (make100), Projects we love (pwl), Category, Location. make100/pwl is 1 if project is 
     # part of it and otherwise 0.
-    try:
-        spc_cat_loc_elems = soup.select('span[class="ml1"]')
-        spc_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in spc_cat_loc_elems]
+    pwl = MISSING    
+    make100 = MISSING
+    category = MISSING
+    subcategory = MISSING
+    location = MISSING
 
-        # Project is part of Projects we Love or Make 100.
-        if "Project We Love" in spc_cat_loc_data:
+    if status != successful:
+            spc_cat_loc_elems = soup.select('span[class="ml1"]')
+            spc_cat_loc_data = [pwl_cat_loc_elem.getText() for pwl_cat_loc_elem in spc_cat_loc_elems]
+
+            if len(spc_cat_loc_data) >= 2:
+                # Project is part of Projects we Love or Make 100.
+                if "Project We Love" in spc_cat_loc_data:
+                    pwl = 1
+                else:
+                    pwl = 0
+
+                if "Make 100" in spc_cat_loc_data:
+                    make100 = 1
+                else:
+                    make100 = 0
+
+                cat_str = spc_cat_loc_data[-2]
+                category, subcategory = get_category_data(cat_str)
+
+                location = spc_cat_loc_data[-1]
+    else:   
+        # Try alternate tags for successful campaigns
+        pwl_elem = soup.select_one('svg[class="svg-icon__icon--small-k nowrap fill-white icon-14"]')
+        if pwl_elem != None:
             pwl = 1
         else:
             pwl = 0
 
-        if "Make 100" in spc_cat_loc_data:
-            make100 = 1
-        else:
-            make100 = 0
+        cat_loc_elems = soup.select('a[class="grey-dark mr3 nowrap type-12"]')
+        if len(cat_loc_elems) != 0:
+            location = cat_loc_elems[0].getText().strip()
+            category, subcategory = get_category_data(cat_loc_elems[1].getText().strip())
 
-        cat_str = spc_cat_loc_data[-2]
-        category, subcategory = get_category_data(cat_str)
-
-        location = spc_cat_loc_data[-1]
-
-    # Category or location missing.
-    except IndexError:
-        pwl = MISSING    
-        make100 = MISSING
-        category = MISSING
-        subcategory = MISSING
-        location = MISSING
-    finally:
-        data["pwl"] = pwl
-        data["make100"] = make100
-        data["category"] = category
-        data["subcategory"] = subcategory
-        data["location"] = location
-
-    # Try alternate tags for successful campaigns if category/location
-    # is missing.
-    cat_loc_elems = soup.select('a[class="grey-dark mr3 nowrap type-12"]')
-    if len(cat_loc_elems) != 0:
-        data["location"] = cat_loc_elems[0].getText().strip()
-        data["category"], data["subcategory"] = get_category_data(cat_loc_elems[1].getText().strip())
+    data["pwl"] = pwl
+    data["make100"] = make100
+    data["category"] = category
+    data["subcategory"] = subcategory
+    data["location"] = location
 
     # Number of projects created.
     try:
@@ -598,8 +602,8 @@ def test_extract_campaign_data():
                 (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccesful campaign
                 (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html",), # Successful campaign
                 # (r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html",), # Both Make 100 and Projects We Love
-                ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
-                ("https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller", True), # Canceled campaign
+                # ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
+                # ("https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller", True), # Canceled campaign
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
