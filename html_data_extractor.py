@@ -6,6 +6,7 @@ import re
 from collections import defaultdict
 import logging
 import time
+import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -20,69 +21,52 @@ from tqdm import tqdm
 
 # Set logging.
 logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
-# Toggle to turn off unzipping if already done.
-UNZIP = False
 # Toggle to turn off live scraping. 
 OFFLINE = True
-# Control how many campaign files to go through at most. Set 'All' for all
-# or an int number of files.
-FILE_NUM = 15_000
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 
 # Script.
 
-def extract_html_files(path, data_folder, unzip=True):
-    """Extracts all files in the zipped folders in path
-    to the given data folder (created if it doesn't exist) and
-    returns a tuple of lists of the html file paths according to
-    their type. If unzip is set to False, it will not unzip the
-    folders in path and will just extract html files in
-    path/data_folder.
+def nested_unzipper(file_path, to_path):
+    """Unzips nested zip in file_path to given to_path. Deletes nested
+    zips after unzipping. Returns None.
 
-    Inputs:
-    path [str] - Path to zip files.
-    data_folder [str] - Path to folder to store unzipped data.
-    unzip [boolean] - Whether to unzip files at path or not."""
-    data_folder_path = os.path.join(path, data_folder)
+    Inputs - 
+    file_path [str]: Path to nested zip.
+    to_path [str]: Path to store unzipped files."""
+    if os.path.splitext(file_path)[1] != ".zip":
+        raise ValueError("file_path is not a zip file.")
 
-    if unzip:
-        # Make data folder if it doesn't exist.
-        os.makedirs(data_folder_path, exist_ok=True)
+    logging.info(f"Unzipping \"{os.path.basename(file_path)}\"...")
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        zip_ref.extractall(to_path)
 
-        logging.info("Unzipping files in path...")
-        # Find all zip files in current path and extract them to data_folder.
-        zip_files = []
-        for file in os.listdir(path):
+    # Unzip any files inside unzipped zip.
+    logging.info(f"Unzipping nested zips inside \"{os.path.basename(file_path)}\"...")
+    to_path_zips = []
+    for (root, dirs, files) in os.walk(to_path):
+        for file in files:
             if file.endswith(".zip"):
-                zip_files.append(file)
+                to_path_zips.append(os.path.join(root, file))
+    
+    # Unzip nested zips and delete the zips.
+    for zip_file in tqdm(to_path_zips):
+        file_dir = os.path.dirname(zip_file)
+        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+            zip_ref.extractall(file_dir)
+        os.remove(zip_file)
 
-        for zip_file in tqdm(zip_files):
-            with zipfile.ZipFile(os.path.join(path, zip_file), 'r') as zip_ref:
-                zip_ref.extractall(data_folder_path)
-
-        # Unzip any files in inside data_folder.
-        logging.info("Unzipping nested zips...")
-        data_folder_zips = []
-        for (root, dirs, files) in os.walk(data_folder_path):
-            for file in files:
-                if file.endswith(".zip"):
-                    data_folder_zips.append(os.path.join(root, file))
-        
-        # Unzip files inside original directory and delete the zips.
-        for zip_file in tqdm(data_folder_zips):
-            file_dir = os.path.dirname(zip_file)
-            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                zip_ref.extractall(file_dir)
-            os.remove(zip_file)
-
+def classifier(path):
+    """Classifies html files in path and returns a tuple of the paths of the classified files according
+    to their class."""
     # Files to ignore.
     ignore_set = {"community", "faqs", "comments"}
 
     # # Get paths of all html files in the data folder.
     campaign_files = []
     update_files = []
-    for (root, dirs, files) in os.walk(data_folder_path):
+    for (root, dirs, files) in os.walk(path):
         for file in files:
             if file.endswith(".html"):
                 file_type = file.split("_")[1]
@@ -599,7 +583,7 @@ def test_extract_campaign_data():
                 # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
                 # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/2269-can-a-poster-change-the-future/2269-can-a-poster-change-the-future_20190509-000703.html",), # Has pledge lists.
                 # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/10years-100paintings-art-book-by-agustin-iglesias/10years-100paintings-art-book-by-agustin-iglesias_20190424-135918.html",), # Has currency issue
-                (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccesful campaign
+                (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccessful campaign
                 (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html",), # Successful campaign
                 # (r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html",), # Both Make 100 and Projects We Love
                 # ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
@@ -610,36 +594,51 @@ def test_extract_campaign_data():
     df.to_csv('test.csv', index = False)
 
 if __name__ == "__main__":
-    # Toggle from true/false or 1/0 if testing or not testing.
+        # Toggle from true/false or 1/0 if testing or not testing.
     testing = 0
 
     if not testing:
         # Path to zip files.
-        path = r"F:\Kickstarter Zips"
+        zip_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art"
+
+        # Find all zip files in zip_path.
+        zip_files = []
+        for file in os.listdir(zip_path):
+            if file.endswith(".zip"):
+                zip_files.append(os.path.join(zip_path, file))
 
         # Folder which will contain unzipped data.
-        data_folder = "Unzipped"
+        to_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Unzipped"
 
-        campaign_files, update_files = extract_html_files(path, data_folder, UNZIP)
-
-        if FILE_NUM != 'All':
-            campaign_files = campaign_files[:FILE_NUM]
-
-        # Extract data from html files.
-
-        # Process update files.
-        logging.info("Processing update files...")
-        roots = defaultdict(list)
-        for file_path in  update_files:
-            roots[os.path.dirname(file_path)].append(file_path)
+        campaign_data = []
+        update_data = {}
 
         pool = multiprocessing.Pool()
-        update_data = pool.map(extract_update_files_data, roots.values())
-        update_data = dict(update_data)
+        # Unzip one zip at a time, extract data from files and then delete
+        # the unzipped data.
+        for zip_file in zip_files:
+            os.makedirs(to_path, exist_ok=True)
 
-        # Process campaign files.
-        logging.info("Processing campaign files...")
-        campaign_data = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
+            nested_unzipper(zip_file, to_path)
+            campaign_files, update_files = classifier(to_path)
+
+            # Process update files.
+            logging.info("Processing update files...")
+            roots = defaultdict(list)
+            for file_path in  update_files:
+                roots[os.path.dirname(file_path)].append(file_path)
+
+            update_data |= dict(pool.map(extract_update_files_data, roots.values()))
+
+            # Process campaign files.
+            logging.info("Processing campaign files...")
+            campaign_res = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=10), total=len(campaign_files)))
+            campaign_data.extend(campaign_res)
+            
+            # Delete unzipped data.
+            logging.info("Deleting unzipped files...\n")
+            shutil.rmtree(to_path)
+
         pool.close()
         pool.join()
 
