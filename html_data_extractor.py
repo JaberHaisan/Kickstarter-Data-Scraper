@@ -7,6 +7,7 @@ from collections import defaultdict
 import logging
 import time
 import shutil
+import uuid
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -35,9 +36,6 @@ def nested_unzipper(file_path, to_path):
     Inputs - 
     file_path [str]: Path to nested zip.
     to_path [str]: Path to store unzipped files."""
-    if os.path.splitext(file_path)[1] != ".zip":
-        raise ValueError("file_path is not a zip file.")
-
     logging.info(f"Unzipping \"{os.path.basename(file_path)}\"...")
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(to_path)
@@ -292,7 +290,7 @@ def extract_campaign_data(path, is_link=False):
     meta_elem = soup.select_one('meta[name="description"]')
     lines = meta_elem["content"].splitlines()
     creator, title = lines[0].split(" is raising funds for ")
-    title = title.strip().replace(" on Kickstarter!", MISSING)
+    title = title.strip().replace(" on Kickstarter!", "")
     blurb = lines[-1].strip()
 
     data["title"] = title
@@ -616,7 +614,9 @@ if __name__ == "__main__":
         pool = multiprocessing.Pool()
         # Unzip one zip at a time, extract data from files and then delete
         # the unzipped data.
-        for zip_file in zip_files:
+        zip_num = len(zip_files)
+        for i, zip_file in enumerate(zip_files, 1):
+            logging.info(f"{i} / {zip_num}")
             os.makedirs(to_path, exist_ok=True)
 
             nested_unzipper(zip_file, to_path)
@@ -660,12 +660,19 @@ if __name__ == "__main__":
                 missing_data.append(campaign_datum)
 
         logging.info("Writing data to file...")
+
+        output_folder = "Output"
+        os.makedirs(output_folder, exist_ok=True)
+       
+        # Generate unique id for output files for current zips.
+        unique_id = uuid.uuid4().hex
+
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
-        df.to_csv('results.csv', index=False)
+        df.to_csv(os.path.join(output_folder, f'results_{unique_id}.csv'), index=False)
 
         missing_df = pd.DataFrame(missing_data)
-        missing_df.to_csv('missing.csv', index=False)
+        missing_df.to_csv(os.path.join(output_folder, f'missing_{unique_id}.csv'), index=False)
 
     else:
         test_extract_campaign_data()
