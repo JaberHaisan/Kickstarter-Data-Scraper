@@ -7,7 +7,6 @@ from collections import defaultdict
 import logging
 import time
 import shutil
-import uuid
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -21,9 +20,15 @@ from tqdm import tqdm
 # Settings.
 
 # Set logging.
-logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
+# Path to data. Make sure to use raw strings or escape "\".
+DATA_PATH = r"F:\Kickstarter Zips\Unzipped"
 # Toggle to turn off live scraping. 
 OFFLINE = True
+# If data is already unzipped, set UNZIP to False and True otherwise.
+UNZIP = False
+# Toggle from true/false or 1/0 if testing or not testing.
+TESTING = 0
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 
@@ -592,35 +597,51 @@ def test_extract_campaign_data():
     df.to_csv('test.csv', index = False)
 
 if __name__ == "__main__":
-        # Toggle from true/false or 1/0 if testing or not testing.
-    testing = 0
-
-    if not testing:
-        # Path to zip files.
-        zip_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art"
-
-        # Find all zip files in zip_path.
-        zip_files = []
-        for file in os.listdir(zip_path):
-            if file.endswith(".zip"):
-                zip_files.append(os.path.join(zip_path, file))
-
-        # Folder which will contain unzipped data.
-        to_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Unzipped"
-
+    if not TESTING:
         campaign_data = []
         update_data = {}
-
         pool = multiprocessing.Pool()
-        # Unzip one zip at a time, extract data from files and then delete
-        # the unzipped data.
-        zip_num = len(zip_files)
-        for i, zip_file in enumerate(zip_files, 1):
-            logging.info(f"{i} / {zip_num}")
-            os.makedirs(to_path, exist_ok=True)
 
-            nested_unzipper(zip_file, to_path)
-            campaign_files, update_files = classifier(to_path)
+        if UNZIP:
+            # Find all zip files in DATA_PATH.
+            zip_files = []
+            for file in os.listdir(DATA_PATH):
+                if file.endswith(".zip"):
+                    zip_files.append(os.path.join(DATA_PATH, file))
+
+            # Folder which will contain unzipped data. Script will create it if
+            # it doesn't exist.
+            to_path = os.path.join(DATA_PATH, "Unzipped")
+
+            # Unzip one zip at a time, extract data from files and then delete
+            # the unzipped data.
+            zip_num = len(zip_files)
+            for i, zip_file in enumerate(zip_files, 1):
+                logging.info(f"{i} / {zip_num}")
+                os.makedirs(to_path, exist_ok=True)
+
+                nested_unzipper(zip_file, to_path)
+                campaign_files, update_files = classifier(to_path)
+
+                # Process update files.
+                logging.info("Processing update files...")
+                roots = defaultdict(list)
+                for file_path in  update_files:
+                    roots[os.path.dirname(file_path)].append(file_path)
+
+                update_data |= dict(pool.map(extract_update_files_data, roots.values()))
+
+                # Process campaign files.
+                logging.info("Processing campaign files...")
+                campaign_res = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=10), total=len(campaign_files)))
+                campaign_data.extend(campaign_res)
+                
+                # Delete unzipped data.
+                logging.info("Deleting unzipped files...\n")
+                shutil.rmtree(to_path)
+
+        else:
+            campaign_files, update_files = classifier(DATA_PATH)
 
             # Process update files.
             logging.info("Processing update files...")
@@ -628,16 +649,12 @@ if __name__ == "__main__":
             for file_path in  update_files:
                 roots[os.path.dirname(file_path)].append(file_path)
 
-            update_data |= dict(pool.map(extract_update_files_data, roots.values()))
+            update_data = pool.map(extract_update_files_data, roots.values())
+            update_data = dict(update_data)
 
             # Process campaign files.
             logging.info("Processing campaign files...")
-            campaign_res = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=10), total=len(campaign_files)))
-            campaign_data.extend(campaign_res)
-            
-            # Delete unzipped data.
-            logging.info("Deleting unzipped files...\n")
-            shutil.rmtree(to_path)
+            campaign_data = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
 
         pool.close()
         pool.join()
@@ -664,15 +681,15 @@ if __name__ == "__main__":
         output_folder = "Output"
         os.makedirs(output_folder, exist_ok=True)
        
-        # Generate unique id for output files for current zips.
-        unique_id = uuid.uuid4().hex
+        # Generate time string for output files for current zips.
+        time_str = datetime.now().strftime('_%Y%m%d-%H%M%S')
 
         # Create dataframe and export output as csv.
         df = pd.DataFrame(all_data)
-        df.to_csv(os.path.join(output_folder, f'results_{unique_id}.csv'), index=False)
+        df.to_csv(os.path.join(output_folder, f'results_{time_str}.csv'), index=False)
 
         missing_df = pd.DataFrame(missing_data)
-        missing_df.to_csv(os.path.join(output_folder, f'missing_{unique_id}.csv'), index=False)
+        missing_df.to_csv(os.path.join(output_folder, f'missing_{time_str}.csv'), index=False)
 
     else:
         test_extract_campaign_data()
