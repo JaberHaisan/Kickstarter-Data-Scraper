@@ -35,51 +35,30 @@ MISSING = ""
 # Script.
 
 def main():
-    if not TESTING:
-        campaign_data = []
-        update_data = {}
-        pool = multiprocessing.Pool()
+    campaign_data = []
+    update_data = {}
+    pool = multiprocessing.Pool()
 
-        if UNZIP:
-            # Find all zip files in DATA_PATH.
-            zip_files = []
-            for file in os.listdir(DATA_PATH):
-                if file.endswith(".zip"):
-                    zip_files.append(os.path.join(DATA_PATH, file))
+    if UNZIP:
+        # Find all zip files in DATA_PATH.
+        zip_files = []
+        for file in os.listdir(DATA_PATH):
+            if file.endswith(".zip"):
+                zip_files.append(os.path.join(DATA_PATH, file))
 
-            # Folder which will contain unzipped data. Script will create it if
-            # it doesn't exist.
-            to_path = os.path.join(DATA_PATH, "Unzipped")
+        # Folder which will contain unzipped data. Script will create it if
+        # it doesn't exist.
+        to_path = os.path.join(DATA_PATH, "Unzipped")
 
-            # Unzip one zip at a time, extract data from files and then delete
-            # the unzipped data.
-            zip_num = len(zip_files)
-            for i, zip_file in enumerate(zip_files, 1):
-                logging.info(f"{i} / {zip_num}")
-                os.makedirs(to_path, exist_ok=True)
+        # Unzip one zip at a time, extract data from files and then delete
+        # the unzipped data.
+        zip_num = len(zip_files)
+        for i, zip_file in enumerate(zip_files, 1):
+            logging.info(f"{i} / {zip_num}")
+            os.makedirs(to_path, exist_ok=True)
 
-                nested_unzipper(zip_file, to_path)
-                campaign_files, update_files = classifier(to_path)
-
-                # Process update files.
-                logging.info("Processing update files...")
-                roots = defaultdict(list)
-                for file_path in  update_files:
-                    roots[os.path.dirname(file_path)].append(file_path)
-
-                update_data |= dict(pool.map(extract_update_files_data, roots.values()))
-
-                # Process campaign files.
-                logging.info("Processing campaign files...")
-                campaign_res = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=10), total=len(campaign_files)))
-                campaign_data.extend(campaign_res)
-                
-                # Delete unzipped data.
-                logging.info("Deleting unzipped files...\n")
-                shutil.rmtree(to_path)
-
-        else:
-            campaign_files, update_files = classifier(DATA_PATH)
+            nested_unzipper(zip_file, to_path)
+            campaign_files, update_files = classifier(to_path)
 
             # Process update files.
             logging.info("Processing update files...")
@@ -87,50 +66,84 @@ def main():
             for file_path in  update_files:
                 roots[os.path.dirname(file_path)].append(file_path)
 
-            update_data = pool.map(extract_update_files_data, roots.values())
-            update_data = dict(update_data)
+            update_data |= dict(pool.map(extract_update_files_data, roots.values()))
 
             # Process campaign files.
             logging.info("Processing campaign files...")
-            campaign_data = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
-
-        pool.close()
-        pool.join()
-
-        # Merge campaign and update data.
-        logging.info("Merging data...")
-        all_data = []
-        missing_data = []
-        imp_columns = ['status', 'backers', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
-                        'converted_goal', 'pledged', 'converted_pledged', 'startday', 'startmonth', 'startyear', 'endday', 
-                        'endmonth', 'endyear', 'category', 'location', 'num_projects', 'num_comments', 'num_updates', 
-                        'num_faq', 'description', 'risk']
-        for campaign_datum in tqdm(campaign_data):
-            url = campaign_datum["url"]
-            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
-            all_data.append(campaign_datum)
-
-            # Keep track of files which are missing data in important columns.
-            if any(campaign_datum[col] == "" for col in imp_columns):
-                missing_data.append(campaign_datum)
-
-        logging.info("Writing data to file...")
-
-        output_folder = "Output"
-        os.makedirs(output_folder, exist_ok=True)
-       
-        # Generate time string for output files for current zips.
-        time_str = datetime.now().strftime('_%Y%m%d-%H%M%S')
-
-        # Create dataframe and export output as csv.
-        df = pd.DataFrame(all_data)
-        df.to_csv(os.path.join(output_folder, f'results_{time_str}.csv'), index=False)
-
-        missing_df = pd.DataFrame(missing_data)
-        missing_df.to_csv(os.path.join(output_folder, f'missing_{time_str}.csv'), index=False)
+            campaign_res = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=10), total=len(campaign_files)))
+            campaign_data.extend(campaign_res)
+            
+            # Delete unzipped data.
+            logging.info("Deleting unzipped files...\n")
+            shutil.rmtree(to_path)
 
     else:
-        test_extract_campaign_data()
+        campaign_files, update_files = classifier(DATA_PATH)
+
+        # Process update files.
+        logging.info("Processing update files...")
+        roots = defaultdict(list)
+        for file_path in  update_files:
+            roots[os.path.dirname(file_path)].append(file_path)
+
+        update_data = pool.map(extract_update_files_data, roots.values())
+        update_data = dict(update_data)
+
+        # Process campaign files.
+        logging.info("Processing campaign files...")
+        campaign_data = list(tqdm(pool.imap(extract_campaign_data, campaign_files, chunksize=20), total=len(campaign_files)))
+
+    pool.close()
+    pool.join()
+
+    # Merge campaign and update data.
+    logging.info("Merging data...")
+    all_data = []
+    missing_data = []
+    imp_columns = ['status', 'backers', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
+                    'converted_goal', 'pledged', 'converted_pledged', 'startday', 'startmonth', 'startyear', 'endday', 
+                    'endmonth', 'endyear', 'category', 'location', 'num_projects', 'num_comments', 'num_updates', 
+                    'num_faq', 'description', 'risk']
+    for campaign_datum in tqdm(campaign_data):
+        url = campaign_datum["url"]
+        campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
+        all_data.append(campaign_datum)
+
+        # Keep track of files which are missing data in important columns.
+        if any(campaign_datum[col] == "" for col in imp_columns):
+            missing_data.append(campaign_datum)
+
+    logging.info("Writing data to file...")
+
+    output_folder = "Output"
+    os.makedirs(output_folder, exist_ok=True)
+    
+    # Generate time string for output files for current zips.
+    time_str = datetime.now().strftime('_%Y%m%d-%H%M%S')
+
+    # Create dataframe and export output as csv.
+    df = pd.DataFrame(all_data)
+    df.to_csv(os.path.join(output_folder, f'results_{time_str}.csv'), index=False)
+
+    missing_df = pd.DataFrame(missing_data)
+    missing_df.to_csv(os.path.join(output_folder, f'missing_{time_str}.csv'), index=False)
+
+def test_extract_campaign_data():
+    # Testing code.
+    file_paths = [
+                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccessful campaign
+                # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html",), # Successful campaign
+                # (r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html",), # Both Make 100 and Projects We Love
+                # ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
+                # ("https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller", True), # Canceled campaign
+                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
+                (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
+                (r"F:/Kickstarter Zips/Unzipped/100-silly-superheroes-a-make-100-project/100-silly-superheroes-a-make-100-project_20190121-024530.html",), 
+                ]
+    data = [extract_campaign_data(*file_path) for file_path in file_paths]
+    df = pd.DataFrame(data)
+    df.to_csv('test.csv', index = False)
 
 def nested_unzipper(file_path, to_path):
     """Unzips nested zip in file_path to given to_path. Deletes nested
@@ -560,12 +573,16 @@ def extract_campaign_data(path, is_link=False):
     highlight_elem = soup.select_one('div[class="grid-row grid-row mb5-lg mb0-md order-0-md order-2-lg"]')
     if highlight_elem != None:
         photos += len(highlight_elem.select("img"))
-        videos += len(highlight_elem.select("video")) or len(highlight_elem.select('svg[class="svg-icon__icon--play icon-20 fill-white"]'))
+        # Check either possible tag for video in highlight.
+        videos += len(highlight_elem.select('svg[class="svg-icon__icon--play icon-20 fill-white"]')) or len(highlight_elem.select("video"))
     # Get number of photos and videos in description.
     description_container_elem = soup.select_one('div[class="col col-8 description-container"]')
     if description_container_elem != None:
         photos += len(description_container_elem.select("img"))
+
         videos += len(description_container_elem.select("video"))
+        videos += len(description_container_elem.select('div[class="template oembed"]'))
+        
     data["num_photos"] = photos
     data["num_videos"] = videos
 
@@ -604,6 +621,9 @@ def extract_campaign_data(path, is_link=False):
             pwl = 1
         else:
             pwl = 0
+
+        # Successful projects don't have Make 100.
+        make100 = 0
 
         cat_loc_elems = soup.select('a[class="grey-dark mr3 nowrap type-12"]')
         if len(cat_loc_elems) != 0:
@@ -680,20 +700,8 @@ def extract_campaign_data(path, is_link=False):
 
     return data
 
-def test_extract_campaign_data():
-    # Testing code.
-    file_paths = [
-                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
-                (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccessful campaign
-                (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html",), # Successful campaign
-                (r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html",), # Both Make 100 and Projects We Love
-                # ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
-                # ("https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller", True), # Canceled campaign
-                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
-                ]
-    data = [extract_campaign_data(*file_path) for file_path in file_paths]
-    df = pd.DataFrame(data)
-    df.to_csv('test.csv', index = False)
-
 if __name__ == "__main__":
-    main()
+    if not TESTING:
+        main()
+    else:
+        test_extract_campaign_data()
