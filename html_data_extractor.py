@@ -80,7 +80,7 @@ def main():
 
     else:
         campaign_files, update_files = classifier(DATA_PATH)
-
+        # campaign_files = campaign_files[:1000]
         # Process update files.
         logging.info("Processing update files...")
         roots = defaultdict(list)
@@ -567,13 +567,11 @@ def extract_campaign_data(path, is_link=False):
     # Campaign end time.
     endday, endmonth, endyear = MISSING, MISSING, MISSING
 
-    if status == live:
-        end_time_elem = soup.select_one('p[class="mb3 mb0-lg type-12"]')
-        if end_time_elem != None:
-            time_str = end_time_elem.getText()[80:]
-            dt = datetime.strptime(time_str, "%B %d %Y %I:%M %p %Z %z.")
-            endday, endmonth, endyear = dt.day, dt.month, dt.year
-    else:
+    if project_data != "":
+        dt = datetime.fromtimestamp(project_data['deadlineAt'])
+        endday, endmonth, endyear = dt.day, dt.month, dt.year
+
+    elif status != live:
         end_time_elem = soup.select('time[data-format="ll"]')
         if len(end_time_elem) >= 2:
             time_str = end_time_elem[1].attrs['datetime'][:10]
@@ -654,20 +652,10 @@ def extract_campaign_data(path, is_link=False):
     data["location"] = location
 
     # Number of projects created.
-    try:
-        project_num_elem = soup.select_one('a[class="dark-grey-500 keyboard-focusable"]')
-        # Try other possible tag for project num if necessary.
-        if project_num_elem == None:
-            project_num_elem = soup.select_one('span[class="dark-grey-500"]')   
-
-        projects_num = project_num_elem.getText().split()[0]
-        if projects_num == "First":
-            projects_num = "1"
-    # Project number missing.
-    except:
-        projects_num = MISSING
-    finally:
-        data["num_projects"] = projects_num
+    num_projects = MISSING
+    if project_data != "":
+        num_projects = project_data['creator']['createdProjects']['totalCount']
+    data["num_projects"] = num_projects
 
     # Number of comments.
     comments_elem = soup.select_one('data[itemprop="Project[comments_count]"]')
