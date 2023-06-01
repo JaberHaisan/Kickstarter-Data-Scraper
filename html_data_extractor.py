@@ -7,6 +7,7 @@ from collections import defaultdict
 import logging
 import time
 import shutil
+import json
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -131,15 +132,10 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
-                # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/15-pudgy-budgie-and-friends-enamel-pins/15-pudgy-budgie-and-friends-enamel-pins_20190310-220712.html",), # Unsuccessful campaign
-                # (r"C:/Users/jaber/OneDrive/Desktop/Research_JaberChowdhury/Data/art/Other/Unzipped/a1/1-dollar-1-drawing-0/1-dollar-1-drawing-0_20190707-222902.html",), # Successful campaign
-                # (r"F:/Kickstarter Zips/Unzipped/100-beautiful-mistakes/100-beautiful-mistakes_20190108-144521.html",), # Both Make 100 and Projects We Love
-                # ("https://www.kickstarter.com/projects/vergencelabs/redefine-reality-with-computing-enabled-eyewear", True), # Suspended campaign
-                # ("https://www.kickstarter.com/projects/ralevo/ralevo-compact-and-mountable-foam-roller", True), # Canceled campaign
-                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
+                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                # (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
                 (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
-                (r"F:/Kickstarter Zips/Unzipped/100-silly-superheroes-a-make-100-project/100-silly-superheroes-a-make-100-project_20190121-024530.html",), 
+                # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True) # Has collaborators.
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -455,6 +451,19 @@ def extract_campaign_data(path, is_link=False):
         backers = backers_elem.getText().strip()
 
     data["backers"] = backers
+
+    # Collaborators. Empty list if no collaborators and
+    # empty string if it was not possible to extract.
+    collab_elem = soup.select_one('div[data-initial]')
+    collaborators = []
+    if collab_elem != None:
+        collab_list = json.loads(collab_elem['data-initial'])['project']['collaborators']['edges']
+        for collab in collab_list:
+            collab = collab['node']
+            collaborators.append((collab['name'], collab['url']))
+    else:
+        collaborators = ""
+    data["collaborators"] = collaborators
 
     # Default values.
     original_curr_symbol = converted_curr_symbol = MISSING
