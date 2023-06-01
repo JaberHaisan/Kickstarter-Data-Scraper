@@ -101,7 +101,7 @@ def main():
     logging.info("Merging data...")
     all_data = []
     missing_data = []
-    imp_columns = ['status', 'backers', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
+    imp_columns = ['status', 'backers', 'collaborators', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
                     'converted_goal', 'pledged', 'converted_pledged', 'startday', 'startmonth', 'startyear', 'endday', 
                     'endmonth', 'endyear', 'category', 'location', 'num_projects', 'num_comments', 'num_updates', 
                     'num_faq', 'description', 'risk']
@@ -132,10 +132,11 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
                 # (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
-                (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
-                # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True) # Has collaborators.
+                # (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
+                # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True), # Has collaborators.
+                (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -438,26 +439,34 @@ def extract_campaign_data(path, is_link=False):
             status = suspended
 
     data["status"] = status
-    
+
+    # data-initial attribute has a lot of the required data elements
+    # so check if it exists.
+    project_data_elem = soup.select_one('div[data-initial]')
+    project_data = ""
+    if project_data_elem != None:
+        project_data = json.loads(project_data_elem['data-initial'])['project']
+
     # Backers.
     backers = MISSING
-    if status != successful:
-        backers_selector = 'div[class="block type-16 type-24-md medium soft-black"]'
-    else: 
+    if status == successful:
         backers_selector = 'div[class="mb0"] > h3[class="mb0"]'
-
-    backers_elem = soup.select_one(backers_selector)
-    if backers_elem != None:
-        backers = backers_elem.getText().strip()
+        backers_elem = soup.select_one(backers_selector)
+        if backers_elem != None:
+            backers = backers_elem.getText().strip()        
+    elif project_data != "":
+        if 'backersCount' in project_data:
+            backers = project_data['backersCount']
+        else:
+            backers = project_data['backers']['totalCount']
 
     data["backers"] = backers
 
     # Collaborators. Empty list if no collaborators and
     # empty string if it was not possible to extract.
-    collab_elem = soup.select_one('div[data-initial]')
     collaborators = []
-    if collab_elem != None:
-        collab_list = json.loads(collab_elem['data-initial'])['project']['collaborators']['edges']
+    if project_data != "":
+        collab_list = project_data['collaborators']['edges']
         for collab in collab_list:
             collab = collab['node']
             collaborators.append((collab['name'], collab['url']))
@@ -467,7 +476,7 @@ def extract_campaign_data(path, is_link=False):
 
     # Default values.
     original_curr_symbol = converted_curr_symbol = MISSING
-    conversion_rate = 1
+    conversion_rate = 0
     goal = converted_goal = MISSING
     pledged = converted_pledged = MISSING
 
@@ -493,7 +502,6 @@ def extract_campaign_data(path, is_link=False):
             original_curr_symbol = soup.select_one('span[class="new-form__currency-box__text"]').getText().strip()
 
             conversion_needed = True
-            conversion_rate = conversion_rate
 
         # No need for conversion.
         else:
