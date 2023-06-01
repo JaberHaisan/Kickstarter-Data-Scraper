@@ -132,9 +132,9 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
-                # (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
-                # (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
+                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
+                (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
                 # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True), # Has collaborators.
                 (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
                 ]
@@ -414,38 +414,31 @@ def extract_campaign_data(path, is_link=False):
     data["creator"] = creator
     data["blurb"] = blurb 
 
-    # Status of campaign.
-    status = MISSING
-
-    # Status strings (to make any changes to status easier).
-    successful = "Successful"
-    unsuccessful = "Unsuccessful"
-    canceled = "Canceled"
-    suspended = "Suspended"
-    live = "Live"
-
-    state_elem = soup.select_one('section[class="js-project-content js-project-description-content project-content"]')
-    if state_elem != None:
-        project_state = state_elem['data-project-state']
-        if project_state == "live":
-            status = live
-        elif project_state == "failed":
-            status = unsuccessful
-        elif project_state == "successful":
-            status = successful
-        elif project_state == "canceled":
-            status = canceled
-        elif project_state == "suspended":
-            status = suspended
-
-    data["status"] = status
-
     # data-initial attribute has a lot of the required data elements
     # so check if it exists.
     project_data_elem = soup.select_one('div[data-initial]')
     project_data = ""
     if project_data_elem != None:
         project_data = json.loads(project_data_elem['data-initial'])['project']
+
+    # Status of campaign.
+    status = MISSING
+
+    # Status strings.
+    successful = "Successful"
+    failed = "Failed"
+    canceled = "Canceled"
+    suspended = "Suspended"
+    live = "Live"
+
+    state_elem = soup.select_one('section[class="js-project-content js-project-description-content project-content"]')
+    if state_elem != None:
+        status = state_elem['data-project-state']
+    elif project_data != "":
+        status = project_data['state']
+
+    status = status.title()
+    data["status"] = status
 
     # Backers.
     backers = MISSING
@@ -483,9 +476,6 @@ def extract_campaign_data(path, is_link=False):
     # Some tags for campaigns at different statuses are distinct for
     # currency symbols, goals and pledges.
     if status == live:
-        # Boolean to toggle for currency conversion.
-        conversion_needed = False
-
         # Get conversion rate of currency if necessary for goal and pledged amounts.
         curr_elems = soup.select('div[class="input__currency-conversion"]')
         # Check if currency conversions are present.
@@ -501,11 +491,10 @@ def extract_campaign_data(path, is_link=False):
             converted_curr_symbol = get_str(curr_elem.contents[1].getText(), {'.', ','})
             original_curr_symbol = soup.select_one('span[class="new-form__currency-box__text"]').getText().strip()
 
-            conversion_needed = True
-
         # No need for conversion.
         else:
             original_curr_symbol = converted_curr_symbol = re.findall("window.current_currency = '(\w+)'", str(soup))[0].strip()
+            conversion_rate = 1
 
         # Fix symbols to one form if they have known alternate forms.
         fixed_symbols = {"USD": "$", "US$": "$", "Â£": "£", "â‚¬": "€"}
@@ -515,22 +504,14 @@ def extract_campaign_data(path, is_link=False):
             converted_curr_symbol = fixed_symbols[converted_curr_symbol]
 
         # Project goal.
-        goal_elem = soup.select_one('span[class="block dark-grey-500 type-12 type-14-md lh3-lg"] > span')
-        if goal_elem != None:
-            goal = get_digits(goal_elem.contents[1].getText(), "int") 
-            if conversion_needed:
-                converted_goal = goal * conversion_rate
-            else:
-                converted_goal = goal
+        if project_data != "":
+            goal = float(project_data['goal']['amount'])
+            converted_goal = goal * conversion_rate
 
         # Pledged amount.
-        pledged_elem = soup.select_one('span[class="ksr-green-700"]')
-        if pledged_elem != None:
-            pledged = get_digits(pledged_elem.getText()) 
-            if conversion_needed:
-                converted_pledged = pledged * conversion_rate
-            else:
-                converted_pledged = pledged         
+        if project_data != "":
+            pledged = float(project_data['pledged']['amount'])
+            converted_pledged = pledged * conversion_rate
 
     else:
         if status == successful:
@@ -654,7 +635,10 @@ def extract_campaign_data(path, is_link=False):
     # Number of projects created.
     num_projects = MISSING
     if project_data != "":
-        num_projects = project_data['creator']['createdProjects']['totalCount']
+        if 'createdProjects' in project_data['creator']:
+            num_projects = project_data['creator']['createdProjects']['totalCount']
+        else:
+            num_projects = project_data['creator']['launchedProjects']['totalCount']
     data["num_projects"] = num_projects
 
     # Number of comments.
