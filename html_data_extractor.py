@@ -20,18 +20,18 @@ from tqdm import tqdm
 
 # Settings.
 
-# Set logging.
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 # Path to data. Make sure to use raw strings or escape "\".
 DATA_PATH = r"F:\Kickstarter Zips\Unzipped"
-# Toggle to turn off live scraping. 
-OFFLINE = True
 # If data is already unzipped, set UNZIP to False and True otherwise.
 UNZIP = False
+# Toggle to turn off live scraping. 
+OFFLINE = True
 # Toggle from true/false or 1/0 if testing or not testing.
 TESTING = 0
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
+# Set logging.
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
 # Script.
 
@@ -55,7 +55,7 @@ def main():
         # the unzipped data.
         zip_num = len(zip_files)
         for i, zip_file in enumerate(zip_files, 1):
-            logging.info(f"{i} / {zip_num}")
+            logging.info(f"Zip: {i} / {zip_num}")
             os.makedirs(to_path, exist_ok=True)
 
             nested_unzipper(zip_file, to_path)
@@ -80,7 +80,7 @@ def main():
 
     else:
         campaign_files, update_files = classifier(DATA_PATH)
-        # campaign_files = campaign_files[:1000]
+        # campaign_files = campaign_files[:10000]
         # Process update files.
         logging.info("Processing update files...")
         roots = defaultdict(list)
@@ -137,6 +137,7 @@ def test_extract_campaign_data():
                 (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
                 # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True), # Has collaborators.
                 (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
+                (r"F:/Kickstarter Zips/Unzipped/cabin-of-curiosities-on-wheels/cabin-of-curiosities-on-wheels_20190114-114536.html",), # Empty data-initial
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -419,7 +420,7 @@ def extract_campaign_data(path, is_link=False):
     project_data_elem = soup.select_one('div[data-initial]')
     project_data = ""
     if project_data_elem != None:
-        project_data = json.loads(project_data_elem['data-initial'])['project']
+        project_data = json.loads(project_data_elem['data-initial']).get('project', "")
 
     # Status of campaign.
     status = MISSING
@@ -442,16 +443,20 @@ def extract_campaign_data(path, is_link=False):
 
     # Backers.
     backers = MISSING
-    if status == successful:
-        backers_selector = 'div[class="mb0"] > h3[class="mb0"]'
-        backers_elem = soup.select_one(backers_selector)
-        if backers_elem != None:
-            backers = backers_elem.getText().strip()        
-    elif project_data != "":
+
+    if project_data != "":
         if 'backersCount' in project_data:
             backers = project_data['backersCount']
         else:
-            backers = project_data['backers']['totalCount']
+            backers = project_data['backers']['totalCount']   
+    elif status == successful:
+        backers_elem = soup.select_one('div[class="mb0"] > h3[class="mb0"]')
+        if backers_elem != None:
+            backers = backers_elem.getText().strip()
+    else:
+        backers_elem = soup.select_one('div[class="block type-16 type-24-md medium soft-black"]')
+        if backers_elem != None:
+            backers = backers_elem.getText().strip()       
 
     data["backers"] = backers
 
@@ -461,8 +466,7 @@ def extract_campaign_data(path, is_link=False):
     if project_data != "":
         collab_list = project_data['collaborators']['edges']
         for collab in collab_list:
-            collab = collab['node']
-            collaborators.append((collab['name'], collab['url']))
+            collaborators.append((collab['node']['name'], collab['node']['url'], collab['title']))
     else:
         collaborators = ""
     data["collaborators"] = collaborators
@@ -507,11 +511,21 @@ def extract_campaign_data(path, is_link=False):
         if project_data != "":
             goal = float(project_data['goal']['amount'])
             converted_goal = goal * conversion_rate
+        else:
+            goal_elem = soup.select_one('span[class="block dark-grey-500 type-12 type-14-md lh3-lg"] > span')
+            if goal_elem != None:
+                goal = get_digits(goal_elem.contents[1].getText(), "int") 
+                converted_goal = goal * conversion_rate
 
         # Pledged amount.
         if project_data != "":
             pledged = float(project_data['pledged']['amount'])
             converted_pledged = pledged * conversion_rate
+        else:
+            pledged_elem = soup.select_one('span[class="ksr-green-700"]')
+            if pledged_elem != None:
+                pledged = get_digits(pledged_elem.getText())
+                converted_pledged = pledged * conversion_rate            
 
     else:
         if status == successful:
@@ -557,6 +571,12 @@ def extract_campaign_data(path, is_link=False):
         if len(end_time_elem) >= 2:
             time_str = end_time_elem[1].attrs['datetime'][:10]
             dt = datetime.strptime(time_str, "%Y-%m-%d")
+            endday, endmonth, endyear = dt.day, dt.month, dt.year
+    else:
+        end_time_elem = soup.select_one('p[class="mb3 mb0-lg type-12"]')
+        if end_time_elem != None:
+            time_str = end_time_elem.getText()[80:]
+            dt = datetime.strptime(time_str, "%B %d %Y %I:%M %p %Z %z.")
             endday, endmonth, endyear = dt.day, dt.month, dt.year
 
     data["endday"] = endday
@@ -610,6 +630,19 @@ def extract_campaign_data(path, is_link=False):
                 category, subcategory = get_category_data(cat_str)
 
                 location = spc_cat_loc_data[-1]
+
+            elif project_data != "":
+                # No subcategory.
+                if project_data['category']['parentCategory'] == None:
+                    category = project_data['category']['name']
+                else:
+                    subcategory = project_data['category']['name']
+                    category = project_data['category']['parentCategory']['name']
+                
+                # Converts True -> 1 and False -> 0
+                pwl = int(project_data['isProjectWeLove'])
+
+                location = project_data['location']['displayableName']
     else:   
         # Try alternate tags for successful campaigns
         pwl_elem = soup.select_one('svg[class="svg-icon__icon--small-k nowrap fill-white icon-14"]')
