@@ -24,10 +24,12 @@ from tqdm import tqdm
 DATA_PATH = r"F:\Kickstarter Zips\Unzipped"
 # If data is already unzipped, set UNZIP to False and True otherwise.
 UNZIP = False
-# Toggle to turn off live scraping. 
+# Toggle to turn on/off deleting unzipped files.
+DELETE = True
+# Toggle to turn off/on live scraping. 
 OFFLINE = True
-# Toggle from true/false or 1/0 if testing or not testing.
-TESTING = 0
+# Toggle to turn on/off testing.
+TESTING = False
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 # Set logging.
@@ -58,8 +60,8 @@ def main():
             logging.info(f"Zip: {i} / {zip_num}")
             os.makedirs(to_path, exist_ok=True)
 
-            nested_unzipper(zip_file, to_path)
-            campaign_files, update_files = classifier(to_path)
+            folder_path = nested_unzipper(zip_file, to_path)
+            campaign_files, update_files = classifier(folder_path)
 
             # Process update files.
             logging.info("Processing update files...")
@@ -75,8 +77,10 @@ def main():
             campaign_data.extend(campaign_res)
             
             # Delete unzipped data.
-            logging.info("Deleting unzipped files...\n")
-            shutil.rmtree(to_path)
+            if DELETE:
+                logging.info("Deleting unzipped files...")
+                shutil.rmtree(to_path)
+            logging.info("Finished processing.\n")
 
     else:
         campaign_files, update_files = classifier(DATA_PATH)
@@ -132,12 +136,12 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
-                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
-                (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
+                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                # (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
+                # (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
                 # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True), # Has collaborators.
-                (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
-                (r"F:/Kickstarter Zips/Unzipped/cabin-of-curiosities-on-wheels/cabin-of-curiosities-on-wheels_20190114-114536.html",), # Empty data-initial
+                # (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
+                (r"F:\Kickstarter Zips\Unzipped\animals-in-art-from-the-renaissance-to-baroque\animals-in-art-from-the-renaissance-to-baroque_20190203-060424.html",), # Failed campaign with missing goal and pledge
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -145,17 +149,22 @@ def test_extract_campaign_data():
 
 def nested_unzipper(file_path, to_path):
     """Unzips nested zip in file_path to given to_path. Deletes nested
-    zips after unzipping. Returns None.
+    zips after unzipping. Returns path to unzipped data.
 
     Inputs - 
     file_path [str]: Path to nested zip.
     to_path [str]: Path to store unzipped files."""
-    logging.info(f"Unzipping \"{os.path.basename(file_path)}\"...")
+    # Create folder in destination for unzipped data.
+    base = os.path.basename(file_path)
+    os.makedirs(base[:-4], exist_ok=True)
+    to_path = os.path.join(to_path, base[:-4])
+
+    logging.info(f"Unzipping \"{base}\"...")
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
         zip_ref.extractall(to_path)
 
     # Unzip any files inside unzipped zip.
-    logging.info(f"Unzipping nested zips inside \"{os.path.basename(file_path)}\"...")
+    logging.info(f"Unzipping nested zips inside \"{base}\"...")
     to_path_zips = []
     for (root, dirs, files) in os.walk(to_path):
         for file in files:
@@ -168,6 +177,8 @@ def nested_unzipper(file_path, to_path):
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
             zip_ref.extractall(file_dir)
         os.remove(zip_file)
+    
+    return to_path
 
 def classifier(path):
     """Classifies html files in path and returns a tuple of the paths of the classified files according
@@ -525,25 +536,35 @@ def extract_campaign_data(path, is_link=False):
             pledged_elem = soup.select_one('span[class="ksr-green-700"]')
             if pledged_elem != None:
                 pledged = get_digits(pledged_elem.getText())
-                converted_pledged = pledged * conversion_rate            
+                converted_pledged = pledged * conversion_rate     
 
-    else:
-        if status == successful:
-            completed_goal_selector = 'div[class="type-12 medium navy-500"] > span[class="money"]'
-            completed_pledge_selector = 'h3[class="mb0"] > span[class="money"]'
-        else:
-            completed_goal_selector = 'span[class="inline-block-sm hide"] > span[class="money"]'
-            completed_pledge_selector = 'span[class="soft-black"]'
-
+    elif status == successful:
         # No way to get conversion rate in a completed project.
-        completed_goal_elem = soup.select_one(completed_goal_selector)
-        completed_pledge_elem = soup.select_one(completed_pledge_selector)
-        if completed_goal_elem != None:
-            original_curr_symbol = converted_curr_symbol = get_str(completed_goal_elem.getText(), {'.', ','})
-            goal = converted_goal = get_digits(completed_goal_elem.getText(), "int")
+        successful_goal_elem = soup.select_one('div[class="type-12 medium navy-500"] > span[class="money"]')
+        completed_pledge_elem = soup.select_one('h3[class="mb0"] > span[class="money"]')
+        if successful_goal_elem != None:
+            original_curr_symbol = converted_curr_symbol = get_str(successful_goal_elem.getText(), {'.', ','})
+            goal = converted_goal = get_digits(successful_goal_elem.getText(), "int")
 
         if completed_pledge_elem != None:
             pledged = converted_pledged = get_digits(completed_pledge_elem.getText())
+
+    else:
+        # No way to get conversion rate in a completed project.
+        completed_goal_elem = soup.select_one('span[class="inline-block-sm hide"] > span[class="money"]')
+        completed_pledge_elem = soup.select_one('span[class="soft-black"]')
+
+        if completed_goal_elem != None:
+            original_curr_symbol = converted_curr_symbol = get_str(completed_goal_elem.getText(), {'.', ','})
+            goal = converted_goal = get_digits(completed_goal_elem.getText(), "int")
+        elif project_data != "":
+            goal = converted_goal = float(project_data['goal']['amount'])
+            original_curr_symbol = converted_curr_symbol = project_data['goal']['symbol']
+
+        if completed_pledge_elem != None:
+            pledged = converted_pledged = get_digits(completed_pledge_elem.getText())
+        elif project_data != "":
+            pledged = converted_pledged = float(project_data['pledged']['amount'])
 
     data["original_curr_symbol"] = original_curr_symbol
     data["converted_curr_symbol"] = converted_curr_symbol   
