@@ -139,12 +139,12 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
-                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
-                (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
+                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                # (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
+                # (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
                 # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True), # Has collaborators.
-                (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
-                (r"F:\Kickstarter Zips\Unzipped\animals-in-art-from-the-renaissance-to-baroque\animals-in-art-from-the-renaissance-to-baroque_20190203-060424.html",), # Failed campaign with missing goal and pledge
+                # (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
+                (r"F:/Kickstarter Zips/Unzipped/fixed-animal-collage/fixed-animal-collage_20181124-085618.html",), # Empty creator in data-initial
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
@@ -432,9 +432,9 @@ def extract_campaign_data(path, is_link=False):
     # data-initial attribute has a lot of the required data elements
     # so check if it exists.
     project_data_elem = soup.select_one('div[data-initial]')
-    project_data = ""
+    project_data = None
     if project_data_elem != None:
-        project_data = json.loads(project_data_elem['data-initial']).get('project', "")
+        project_data = json.loads(project_data_elem['data-initial']).get('project', None)
 
     # Status of campaign.
     status = MISSING
@@ -449,7 +449,7 @@ def extract_campaign_data(path, is_link=False):
     state_elem = soup.select_one('section[class="js-project-content js-project-description-content project-content"]')
     if state_elem != None:
         status = state_elem['data-project-state']
-    elif project_data != "":
+    elif project_data:
         status = project_data['state']
 
     status = status.title()
@@ -458,7 +458,7 @@ def extract_campaign_data(path, is_link=False):
     # Backers.
     backers = MISSING
 
-    if project_data != "":
+    if project_data:
         if 'backersCount' in project_data:
             backers = project_data['backersCount']
         else:
@@ -477,7 +477,7 @@ def extract_campaign_data(path, is_link=False):
     # Collaborators. Empty list if no collaborators and
     # empty string if it was not possible to extract.
     collaborators = []
-    if project_data != "":
+    if project_data:
         collab_list = project_data['collaborators']['edges']
         for collab in collab_list:
             collaborators.append((collab['node']['name'], collab['node']['url'], collab['title']))
@@ -522,7 +522,7 @@ def extract_campaign_data(path, is_link=False):
             converted_curr_symbol = fixed_symbols[converted_curr_symbol]
 
         # Project goal.
-        if project_data != "":
+        if project_data:
             goal = float(project_data['goal']['amount'])
             converted_goal = goal * conversion_rate
         else:
@@ -532,7 +532,7 @@ def extract_campaign_data(path, is_link=False):
                 converted_goal = goal * conversion_rate
 
         # Pledged amount.
-        if project_data != "":
+        if project_data:
             pledged = float(project_data['pledged']['amount'])
             converted_pledged = pledged * conversion_rate
         else:
@@ -560,13 +560,13 @@ def extract_campaign_data(path, is_link=False):
         if completed_goal_elem != None:
             original_curr_symbol = converted_curr_symbol = get_str(completed_goal_elem.getText(), {'.', ','})
             goal = converted_goal = get_digits(completed_goal_elem.getText(), "int")
-        elif project_data != "":
+        elif project_data:
             goal = converted_goal = float(project_data['goal']['amount'])
             original_curr_symbol = converted_curr_symbol = project_data['goal']['symbol']
 
         if completed_pledge_elem != None:
             pledged = converted_pledged = get_digits(completed_pledge_elem.getText())
-        elif project_data != "":
+        elif project_data:
             pledged = converted_pledged = float(project_data['pledged']['amount'])
 
     data["original_curr_symbol"] = original_curr_symbol
@@ -586,7 +586,7 @@ def extract_campaign_data(path, is_link=False):
     # Campaign end time.
     endday, endmonth, endyear = MISSING, MISSING, MISSING
 
-    if project_data != "":
+    if project_data:
         dt = datetime.fromtimestamp(project_data['deadlineAt'])
         endday, endmonth, endyear = dt.day, dt.month, dt.year
 
@@ -655,7 +655,7 @@ def extract_campaign_data(path, is_link=False):
 
                 location = spc_cat_loc_data[-1]
 
-            elif project_data != "":
+            elif project_data:
                 # No subcategory.
                 if project_data['category']['parentCategory'] == None:
                     category = project_data['category']['name']
@@ -691,16 +691,17 @@ def extract_campaign_data(path, is_link=False):
 
     # Number of projects created.
     num_projects = MISSING
-    if project_data != "" and project_data['creator'] != None:
+    if project_data and project_data['creator']:
             if 'createdProjects' in project_data['creator']:
                 num_projects = project_data['creator']['createdProjects']['totalCount']
             else:
                 num_projects = project_data['creator']['launchedProjects']['totalCount']
+
     data["num_projects"] = num_projects
 
     # Number of projects backed.
     num_backed = MISSING
-    if project_data != "" and project_data['creator'] != None:
+    if project_data and project_data['creator']:
         if 'backedProjects' in project_data['creator']:
             if project_data['creator']['backedProjects'] != None:
                 num_backed = project_data['creator']['backedProjects']['totalCount']
