@@ -107,7 +107,7 @@ def main():
     missing_data = []
     imp_columns = ['status', 'backers', 'collaborators', 'original_curr_symbol', 'converted_curr_symbol', 'conversion_rate', 'goal', 
                     'converted_goal', 'pledged', 'converted_pledged', 'startday', 'startmonth', 'startyear', 'endday', 
-                    'endmonth', 'endyear', 'category', 'location', 'num_projects', 'num_comments', 'num_updates', 
+                    'endmonth', 'endyear', 'pwl', 'make100', 'category', 'location', 'num_projects', 'num_backed', 'num_comments', 'num_updates', 
                     'num_faq', 'description', 'risk']
     for campaign_datum in tqdm(campaign_data):
         url = campaign_datum["url"]
@@ -115,8 +115,11 @@ def main():
         all_data.append(campaign_datum)
 
         # Keep track of files which are missing data in important columns.
-        if any(campaign_datum[col] == "" for col in imp_columns):
-            missing_data.append(campaign_datum)
+        missing = [col for col in imp_columns if campaign_datum[col] == ""]
+        if len(missing) > 0:
+            missing_datum = {'missing': missing}
+            missing_datum |= campaign_datum
+            missing_data.append(missing_datum)
 
     logging.info("Writing data to file...")
 
@@ -136,11 +139,11 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [
-                # (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
-                # (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
-                # (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
+                (r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Data\art\Other\Unzipped\a1\1-1000-supporters-an-art-gallery-and-design-boutiq\1-1000-supporters-an-art-gallery-and-design-boutiq_20190312-010622.html",), # Nothing special
+                (r"F:\Kickstarter Zips\Unzipped\sos-save-our-ship-0\sos-save-our-ship-0_20181205-004742.html",), # Video count issue
+                (r"F:/Kickstarter Zips/Unzipped/statue-of-the-martyr-of-science-giordano-bruno/statue-of-the-martyr-of-science-giordano-bruno_20181101-183924.html",), # Youtube videos
                 # ("https://www.kickstarter.com/projects/metmo/metmo-pocket-driver?ref=section-homepage-view-more-discovery-p1", True), # Has collaborators.
-                # (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
+                (r"F:/Kickstarter Zips/Unzipped/10-years-of-work-in-a-deluxe-artbook-paintings-and/10-years-of-work-in-a-deluxe-artbook-paintings-and_20181106-213950.html",), # Missing data
                 (r"F:\Kickstarter Zips\Unzipped\animals-in-art-from-the-renaissance-to-baroque\animals-in-art-from-the-renaissance-to-baroque_20190203-060424.html",), # Failed campaign with missing goal and pledge
                 ]
     data = [extract_campaign_data(*file_path) for file_path in file_paths]
@@ -688,12 +691,23 @@ def extract_campaign_data(path, is_link=False):
 
     # Number of projects created.
     num_projects = MISSING
-    if project_data != "":
-        if 'createdProjects' in project_data['creator']:
-            num_projects = project_data['creator']['createdProjects']['totalCount']
-        else:
-            num_projects = project_data['creator']['launchedProjects']['totalCount']
+    if project_data != "" and project_data['creator'] != None:
+            if 'createdProjects' in project_data['creator']:
+                num_projects = project_data['creator']['createdProjects']['totalCount']
+            else:
+                num_projects = project_data['creator']['launchedProjects']['totalCount']
     data["num_projects"] = num_projects
+
+    # Number of projects backed.
+    num_backed = MISSING
+    if project_data != "" and project_data['creator'] != None:
+        if 'backedProjects' in project_data['creator']:
+            if project_data['creator']['backedProjects'] != None:
+                num_backed = project_data['creator']['backedProjects']['totalCount']
+        else:
+            num_backed = project_data['creator']['backingsCount']
+
+    data["num_backed"] = num_backed 
 
     # Number of comments.
     comments_elem = soup.select_one('data[itemprop="Project[comments_count]"]')
