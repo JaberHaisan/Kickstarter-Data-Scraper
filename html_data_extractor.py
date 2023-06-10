@@ -135,7 +135,7 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
     
     # Generate time string for output files for current zips.
-    time_str = datetime.now().strftime('_%Y%m%d-%H%M%S')
+    time_str = datetime.now().strftime('%Y%m%d-%H%M%S')
 
     # Create dataframe and export output as csv.
     df = pd.DataFrame(all_data)
