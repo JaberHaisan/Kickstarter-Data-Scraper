@@ -2,10 +2,13 @@ import re
 import time
 from datetime import datetime
 import json
+import random
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 
+from fake_useragent import UserAgent
 from bs4 import BeautifulSoup
 import pandas as pd
 
@@ -33,7 +36,13 @@ def get_live_soup(link, scroll=False):
     link [str] - A link to a website.
     scroll [bool] - True if you want selenium to keep scrolling down till loading no longer happens.
     False by default"""
-    driver = webdriver.Chrome()
+    # Create random user agent.
+    options = Options()
+    options.add_argument("window-size=1400,600")
+    user_agent = UserAgent()
+    options.add_argument(f'user-agent={user_agent.random}')
+
+    driver = webdriver.Chrome(chrome_options=options)
     driver.get(link)
 
     if not scroll:
@@ -44,7 +53,7 @@ def get_live_soup(link, scroll=False):
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
             # Wait to scroll. Break if no longer loading.
-            time.sleep(5)
+            time.sleep(random.randint(5, 10))
             try:
                 elem = driver.find_element(By.CSS_SELECTOR, 'img[alt="Loading icon"]')
             except:
@@ -109,13 +118,16 @@ def extract_creator_data(path, is_link=True):
         about_soup = get_live_soup(path + "/about")
         created_soup = get_live_soup(path + "/created", True)
         comment_soup = get_live_soup(path + "/comments", True)
+        backed_soup = get_live_soup(path + "/backed", True)
     else:
         with open(path + " — About.html", encoding='utf8', errors="backslashreplace") as infile:
             about_soup = BeautifulSoup(infile, "lxml")
         with open(path + " — Comments.html", encoding='utf8', errors="backslashreplace") as infile:
             comment_soup = BeautifulSoup(infile, "lxml")
         with open(path + " — Created.html", encoding='utf8', errors="backslashreplace") as infile:
-            created_soup = BeautifulSoup(infile, "lxml")         
+            created_soup = BeautifulSoup(infile, "lxml")
+        with open(path + " — Backed.html", encoding='utf8', errors="backslashreplace") as infile:
+            backed_soup = BeautifulSoup(infile, "lxml")                  
 
     # Creator id.
     url_elem = about_soup.select_one('meta[property="og:url"]')
@@ -147,7 +159,9 @@ def extract_creator_data(path, is_link=True):
     data['num_created'] = extract_elem_text(about_soup, 'a[class="nav--subnav__item__link nav--subnav__item__link--gray js-created-link"] > span').strip()
 
     # Websites.
-    data['websites'] = [elem['href'] for elem in about_soup.select('ul[class="menu-submenu mb6"] > li > a')]
+    websites = [elem['href'] for elem in about_soup.select('ul[class="menu-submenu mb6"] > li > a')]
+    data['num_websites'] = len(websites)
+    data['websites'] = websites
 
     # Comments.
     comments = []
@@ -170,6 +184,13 @@ def extract_creator_data(path, is_link=True):
         created_projects.append(parse_data_project(created_data_project))
     data['created_projects'] = created_projects
 
+    # Backed projects.
+    backed_data_projects = [json.loads(elem['data-project']) for elem in backed_soup.select('div[data-project]')]
+    backed_projects = []
+    for backed_data_project in backed_data_projects:
+        backed_projects.append(parse_data_project(backed_data_project) )   
+    data['backed_projects'] = backed_projects
+
     return data
 
 if __name__ == "__main__":
@@ -177,7 +198,7 @@ if __name__ == "__main__":
     # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
     # https://www.kickstarter.com/profile/mybirdbuddy/about # Multiple websites in about.
 
-    data = extract_creator_data(r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Test\Creator\Dice Dungeons", False)
+    data = extract_creator_data(r"https://www.kickstarter.com/profile/booksbyintisar")
     df = pd.DataFrame([data])
     df.to_csv('creator_test.csv', index = False)
 
