@@ -112,22 +112,20 @@ def main():
 
     verified_identities = {}
     for campaign_datum in tqdm(campaign_data):
-        try:
-            url = campaign_datum["url"]
-        except:
-            continue
+        url = campaign_datum.get("url", None)
         
-        campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
+        if url != None:
+            campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
 
-        if campaign_datum['verified_identity'] == MISSING:
-            campaign_datum['verified_identity'] = verified_identities.get(url, MISSING)
-        elif url not in verified_identities.keys():
-            verified_identities[url] = campaign_datum['verified_identity']
+            if campaign_datum['verified_identity'] == MISSING:
+                campaign_datum['verified_identity'] = verified_identities.get(url, MISSING)
+            elif url not in verified_identities.keys():
+                verified_identities[url] = campaign_datum['verified_identity']
 
         all_data.append(campaign_datum)
 
         # Keep track of files which are missing data in important columns.
-        missing = [col for col in imp_columns if campaign_datum[col] == MISSING]
+        missing = [col for col in imp_columns if campaign_datum.get(col, MISSING) == MISSING]
         if len(missing) > 0:
             missing_datum = {'missing': missing}
             missing_datum |= campaign_datum
