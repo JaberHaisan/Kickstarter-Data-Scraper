@@ -112,7 +112,11 @@ def main():
 
     verified_identities = {}
     for campaign_datum in tqdm(campaign_data):
-        url = campaign_datum["url"]
+        try:
+            url = campaign_datum["url"]
+        except:
+            continue
+        
         campaign_datum["startday"], campaign_datum["startmonth"], campaign_datum["startyear"] = update_data.get(url, (MISSING, MISSING, MISSING))
 
         if campaign_datum['verified_identity'] == MISSING:
