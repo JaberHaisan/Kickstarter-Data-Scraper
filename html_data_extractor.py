@@ -417,9 +417,12 @@ def extract_campaign_data(path, is_link=False):
     data["date_accessed"] = date
     data["time_accessed"] = time
 
-    # Url
-    url_elem = soup.select_one('meta[property="og:url"]')
-    data["url"] = url_elem["content"]
+    # Url. If missing, do not continue.
+    try:
+        url_elem = soup.select_one('meta[property="og:url"]')
+        data["url"] = url_elem["content"]
+    except:
+        return data
 
     # Project Id and Creator Id.
     creator_id, project_id = data["url"].split("/")[-2:]
