@@ -40,11 +40,11 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 def main():
     campaign_data = []
     update_data = {}
+    zip_files = []
     pool = multiprocessing.Pool()
 
     if UNZIP:
         # Find all zip files in DATA_PATH.
-        zip_files = []
         for file in os.listdir(DATA_PATH):
             if file.endswith(".zip"):
                 zip_files.append(os.path.join(DATA_PATH, file))
@@ -138,6 +138,9 @@ def main():
     
     # Generate time string for output files for current zips.
     time_str = datetime.now().strftime('%Y%m%d-%H%M%S')
+
+    with open(os.path.join(output_folder, f"zips_{time_str}.txt"), "w") as f_obj:
+        f_obj.writelines(zip_files)
 
     # Create dataframe and export output as csv.
     df = pd.DataFrame(all_data)
