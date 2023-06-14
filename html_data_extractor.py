@@ -315,20 +315,21 @@ def get_category_data(cat_str):
     
     Inputs:
     cat_str = A string which is either a category or subcategory."""
-    categories = {'Art': {'Painting', 'Textiles', 'Conceptual Art', 'Video Art', 'Installations', 'Social Practice', 'Sculpture', 'Ceramics', 'Public Art', 'Illustration', 'Digital Art', 'Performance Art', 'Mixed Media'}, 
-                'Comics': {'Comic Books', 'Events', 'Graphic Novels', 'Anthologies', 'Webcomics'}, 
-                'Crafts': {'Candles', 'Printing', 'Crochet', 'Taxidermy', 'Stationery', 'Pottery', 'Weaving', 'DIY', 'Woodworking', 'Embroidery', 'Glass', 'Quilts', 'Knitting'}, 
-                'Dance': {'Spaces', 'Workshops', 'Residencies', 'Performances'}, 
-                'Design': {'Interactive Design', 'Product Design', 'Graphic Design', 'Architecture', 'Typography', 'Toys', 'Civic Design'}, 
-                'Film & Video': {'Television', 'Thrillers', 'Fantasy', 'Music Videos', 'Romance', 'Narrative Film', 'Action', 'Movie Theaters', 'Horror', 'Festivals', 'Experimental', 'Webseries', 'Documentary', 'Family', 'Drama', 'Science Fiction', 'Comedy', 'Animation', 'Shorts'}, 
-                'Food': {'Bacon', 'Cookbooks', "Farmer's Markets", 'Community Gardens', 'Spaces', 'Small Batch', 'Events', 'Drinks', 'Restaurants', 'Vegan', 'Farms', 'Food Trucks'}, 
-                'Games': {'Puzzles', 'Live Games', 'Video Games', 'Mobile Games', 'Gaming Hardware', 'Tabletop Games', 'Playing Cards'}, 
-                'Journalism': {'Photo', 'Video', '`Print`', 'Audio', 'Web'}, 
-                'Music': {'Indie Rock', 'Rock', 'Faith', 'Country & Folk', 'World Music', 'Kids', 'Comedy', 'Classical Music', 'Pop', 'Punk', 'Hip-Hop', 'Electronic Music', 'Jazz', 'Latin', 'R&B', 'Blues', 'Metal', 'Chiptune'}, 
-                'Photography': {'People', 'Fine Art', 'Photobooks', 'Nature', 'Animals', 'Places'}, 
-                'Publishing': {'Academic', 'Young Adult', "Children's Books", 'Periodicals', 'Calendars', 'Literary Spaces', 'Fiction', 'Radio & Podcasts', 'Literary Journals', 'Comedy', 'Letterpress', 'Art Books', 'Anthologies', 'Zines', 'Poetry', 'Nonfiction', 'Translations'}, 
-                'Technology': {'Wearables', 'Makerspaces', '3D Printing', 'Robots', 'Space Exploration', 'Hardware', 'Camera Equipment', 'Apps', 'Sound', 'Flight', 'Fabrication Tools', 'Software', 'DIY Electronics', 'Web', 'Gadgets'}, 
-                'Theater': {'Festivals', 'Spaces', 'Experimental', 'Musical', 'Comedy', 'Immersive', 'Plays'}}
+    categories = {'Art': {'Ceramics', 'Conceptual Art', 'Digital Art', 'Illustration', 'Installations', 'Mixed Media', 'Painting', 'Performance Art', 'Public Art', 'Sculpture', 'Social Practice', 'Textiles', 'Video Art'}, 
+                'Comics': {'Anthologies', 'Comic Books', 'Events', 'Graphic Novels', 'Webcomics'}, 
+                'Crafts': {'Candles', 'Crochet', 'DIY', 'Embroidery', 'Glass', 'Knitting', 'Pottery', 'Printing', 'Quilts', 'Stationery', 'Taxidermy', 'Weaving', 'Woodworking'}, 
+                'Dance': {'Performances', 'Residencies', 'Spaces', 'Workshops'}, 
+                'Design': {'Architecture', 'Civic Design', 'Graphic Design', 'Interactive Design', 'Product Design', 'Toys', 'Typography'}, 
+                'Fashion': {'Accessories', 'Apparel', 'Childrenswear', 'Couture', 'Footwear', 'Jewelry', 'Pet Fashion', 'Ready-to-wear'}, 
+                'Film & Video': {'Action', 'Animation', 'Comedy', 'Documentary', 'Drama', 'Experimental', 'Family', 'Fantasy', 'Festivals', 'Horror', 'Movie Theaters', 'Music Videos', 'Narrative Film', 'Romance', 'Science Fiction', 'Shorts', 'Television', 'Thrillers', 'Webseries'}, 
+                'Food': {'Bacon', 'Community Gardens', 'Cookbooks', 'Drinks', 'Events', "Farmer's Markets", 'Farms', 'Food Trucks', 'Restaurants', 'Small Batch', 'Spaces', 'Vegan'}, 
+                'Games': {'Gaming Hardware', 'Live Games', 'Mobile Games', 'Playing Cards', 'Puzzles', 'Tabletop Games', 'Video Games'}, 
+                'Journalism': {'Audio', 'Photo', 'Print', 'Video', 'Web'}, 
+                'Music': {'Blues', 'Chiptune', 'Classical Music', 'Comedy', 'Country & Folk', 'Electronic Music', 'Faith', 'Hip-Hop', 'Indie Rock', 'Jazz', 'Kids', 'Latin', 'Metal', 'Pop', 'Punk', 'R&B', 'Rock', 'World Music'}, 
+                'Photography': {'Animals', 'Fine Art', 'Nature', 'People', 'Photobooks', 'Places'}, 
+                'Publishing': {'Academic', 'Anthologies', 'Art Books', 'Calendars', "Children's Books", 'Comedy', 'Fiction', 'Letterpress', 'Literary Journals', 'Literary Spaces', 'Nonfiction', 'Periodicals', 'Poetry', 'Radio & Podcasts', 'Translations', 'Young Adult', 'Zines'}, 
+                'Technology': {'3D Printing', 'Apps', 'Camera Equipment', 'DIY Electronics', 'Fabrication Tools', 'Flight', 'Gadgets', 'Hardware', 'Makerspaces', 'Robots', 'Software', 'Sound', 'Space Exploration', 'Wearables', 'Web'}, 
+                'Theater': {'Comedy', 'Experimental', 'Festivals', 'Immersive', 'Musical', 'Plays', 'Spaces'}}
     
     category, subcategory = cat_str, MISSING
 
