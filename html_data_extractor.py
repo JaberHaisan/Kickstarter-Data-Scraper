@@ -345,13 +345,17 @@ def get_category_data(cat_str):
 
 def extract_update_files_data(files):
     """"Takes a list of update files of the same root and returns a tuple of url and startdate."""
+    url = MISSING
     date = (MISSING, MISSING, MISSING)
     for file in files:
         with open(file, encoding='utf8', errors="backslashreplace") as infile:
             soup = BeautifulSoup(infile, "lxml")
         
-        # Url
-        url = soup.select_one('meta[property="og:url"]')["content"]
+        try:
+            # Url
+            url = soup.select_one('meta[property="og:url"]')["content"]
+        except:
+           continue
 
         # Start date
         date_elem = soup.select_one('time[class="invisible-if-js js-adjust-time"]')
