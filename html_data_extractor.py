@@ -140,7 +140,7 @@ def main():
     time_str = datetime.now().strftime('%Y%m%d-%H%M%S')
 
     with open(os.path.join(output_folder, f"zips_{time_str}.txt"), "w") as f_obj:
-        f_obj.writelines(zip_files)
+        f_obj.writelines([zip_file + "\n" for zip_file in zip_files])
 
     # Create dataframe and export output as csv.
     df = pd.DataFrame(all_data)
