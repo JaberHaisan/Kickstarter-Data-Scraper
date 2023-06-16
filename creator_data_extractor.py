@@ -3,12 +3,16 @@ import time
 from datetime import datetime
 import json
 import random
+import logging
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 
 from bs4 import BeautifulSoup
 import pandas as pd
+
+# Set logging.
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
@@ -199,6 +203,8 @@ if __name__ == "__main__":
     # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
     # https://www.kickstarter.com/profile/mybirdbuddy/about # Multiple websites in about.
 
+    logging.info("Starting...")
     data = extract_creator_data(r"https://www.kickstarter.com/profile/soulmama")
     df = pd.DataFrame([data])
+    logging("Writing data to file...")
     df.to_csv('creator_test.csv', index = False)
