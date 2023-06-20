@@ -190,8 +190,11 @@ def nested_unzipper(file_path, to_path):
     # Unzip nested zips and delete the zips.
     for zip_file in tqdm(to_path_zips):
         file_dir = os.path.dirname(zip_file)
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-            zip_ref.extractall(file_dir)
+        try:
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                zip_ref.extractall(file_dir)
+        except zipfile.BadZipFile:
+            continue
         os.remove(zip_file)
     
     return to_path
