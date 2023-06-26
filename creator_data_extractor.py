@@ -11,6 +11,7 @@ from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import pandas as pd
 
+file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids.json"
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -106,16 +107,21 @@ def parse_data_project(data_project):
     return result
 
 def extract_creator_data(path, is_link=True):
-    """Returns a dictionary of the data for the creator."""
+    """Returns a dictionary of the data for the creator. If passed a file, it should be of
+    a format like 'Dice Dungeons — About.html'."""
     data = {}
 
     if is_link:
         # Extract data from available pages.
         about_soup = get_live_soup(path + "/about")
-        created_soup = get_live_soup(path + "/created", True)
-        comment_soup = get_live_soup(path + "/comments", True)
-        
-        # Do not try to scrap backed page if it's hidden.
+        created_soup = get_live_soup(path + "/created", True)   
+             
+        # Do not try to scrap pages if they are not public.
+        if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
+            comment_soup = get_live_soup(path + "/comments", True)
+        else:
+            comment_soup = None
+                   
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None:
             backed_soup = get_live_soup(path + "/backed", True)
         else:
@@ -169,13 +175,15 @@ def extract_creator_data(path, is_link=True):
 
     # Comments.
     comments = []
-    comment_elems = comment_soup.select('li[class="flex flex-wrap page"] > ol > li')
-    for comment_elem in comment_elems:
-        comment_str = comment_elem.select_one('p[class="body"]').getText()
-        link = "https://www.kickstarter.com" + comment_elem.select_one('a[class="read-more"]')['href']
-        date = comment_elem.select_one('a[class="read-more"] > time').getText()
-        comments.append((comment_str, date, link))
+    if comment_soup != None:
+        comment_elems = comment_soup.select('li[class="flex flex-wrap page"] > ol > li')
+        for comment_elem in comment_elems:
+            comment_str = comment_elem.select_one('p[class="body"]').getText()
+            link = "https://www.kickstarter.com" + comment_elem.select_one('a[class="read-more"]')['href']
+            date = comment_elem.select_one('a[class="read-more"] > time').getText()
+            comments.append((comment_str, date, link))
 
+    data['comments_hidden'] = int(comment_soup == None)
     data['num_comments'] = len(comments)
     data['comments'] = comments
 
@@ -203,8 +211,16 @@ if __name__ == "__main__":
     # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
     # https://www.kickstarter.com/profile/mybirdbuddy/about # Multiple websites in about.
 
+    with open(file_path, "r") as f_obj:
+        creator_ids = json.load(f_obj)
     logging.info("Starting...")
-    data = extract_creator_data(r"https://www.kickstarter.com/profile/soulmama")
-    df = pd.DataFrame([data])
-    logging("Writing data to file...")
+
+    creator_data = []
+    for creator_id in creator_ids:
+        creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
+        creator_data.append(creator_datum)
+        time.sleep(60)
+
+    df = pd.DataFrame(creator_data)
+    logging.info("Writing data to file...")
     df.to_csv('creator_test.csv', index = False)
