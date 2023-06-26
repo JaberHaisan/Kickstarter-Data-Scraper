@@ -47,8 +47,8 @@ if __name__ == "__main__":
     # Merge csvs and write to one csv.
     logging.info("Started merging results csv files...")
     merge_csv_files(result_csvs, os.path.join(PATH, "merged_results.csv"))
-    logging.info("Finished merging results csvs files.")
+    logging.info("Finished merging results csv files.")
 
     logging.info("Started merging missing csv files...")
     merge_csv_files(missing_csvs, os.path.join(PATH, "merged_missing.csv"))
-    logging.info("Finished merging missing csvs files.")
+    logging.info("Finished merging missing csv files.")
