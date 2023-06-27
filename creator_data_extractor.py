@@ -45,6 +45,14 @@ def get_live_soup(link, scroll=False):
     driver = uc.Chrome()
     driver.get(link)
 
+    # If there is a capcha, wait for a minute for user to finish it.
+    try:
+        capcha_elem = driver.find_element(By.CSS_SELECTOR, 'div[id="px-captcha"]')
+    except:
+        pass
+    else:
+        time.sleep(60)
+    
     if not scroll:
         time.sleep(1)
     else:
@@ -55,8 +63,10 @@ def get_live_soup(link, scroll=False):
             # Wait to scroll. Break if no longer loading.
             time.sleep(random.uniform(5, 7))
             try:
-                elem = driver.find_element(By.CSS_SELECTOR, 'img[alt="Loading icon"]')
+                elem = driver.find_element(By.CSS_SELECTOR, 'li[data-last_page="true"]')
             except:
+                continue
+            else:
                 break
 
     soup = BeautifulSoup(driver.page_source, "lxml")
@@ -117,7 +127,7 @@ def extract_creator_data(path, is_link=True):
     if is_link:
         # Extract data from available pages.
         about_soup = get_live_soup(path + "/about")
-        created_soup = get_live_soup(path + "/created", True)   
+        created_soup = get_live_soup(path + "/created")   
              
         # Do not try to scrap pages if they are not public.
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
@@ -221,6 +231,10 @@ if __name__ == "__main__":
         creator_ids = json.load(f_obj)
     os.makedirs(output_path, exist_ok=True)
 
+    # Get already extracted creators and remove them from creator_ids.
+    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
+    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in extracted_creators]
+
     # creator_ids = ['mybirdbuddy']
     for creator_id in creator_ids:
         logging.info(f"Started extracting {creator_id} data...")
@@ -233,5 +247,5 @@ if __name__ == "__main__":
 
         # Stop scraping for a period of time to not be blocked as a bot.
         if len(creator_ids) > 1:
-            logging.info("Sleeping...")
+            logging.info("Sleeping...\n")
             time.sleep(60)
