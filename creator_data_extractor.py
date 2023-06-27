@@ -4,14 +4,17 @@ from datetime import datetime
 import json
 import random
 import logging
+import os
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 
 from bs4 import BeautifulSoup
-import pandas as pd
 
+# Location of creator_ids.json
 file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids.json"
+# Output folder.
+output_path = "Creator Output"
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -171,6 +174,9 @@ def extract_creator_data(path, is_link=True):
     # Websites.
     websites = [elem['href'] for elem in about_soup.select('ul[class="menu-submenu mb6"] > li > a')]
     data['num_websites'] = len(websites)
+    data['has_facebook'] = any("facebook" in website for website in websites)
+    data['has_twitter'] = any("twitter" in website for website in websites)
+    data['has_instagram'] = any("instagram" in website for website in websites)
     data['websites'] = websites
 
     # Comments.
@@ -207,20 +213,25 @@ def extract_creator_data(path, is_link=True):
     return data
 
 if __name__ == "__main__":
-    # https://www.kickstarter.com/profile/dicedungeons/comments # Lots of loading comments.
+    # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
     # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
-    # https://www.kickstarter.com/profile/mybirdbuddy/about # Multiple websites in about.
+    # https://www.kickstarter.com/profile/mybirdbuddy/ # Multiple websites in about.
 
     with open(file_path, "r") as f_obj:
         creator_ids = json.load(f_obj)
-    logging.info("Starting...")
+    os.makedirs(output_path, exist_ok=True)
 
-    creator_data = []
+    # creator_ids = ['mybirdbuddy']
     for creator_id in creator_ids:
+        logging.info(f"Started extracting {creator_id} data...")
         creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
-        creator_data.append(creator_datum)
-        time.sleep(60)
+    
+        # Write data to file.
+        logging.info(f"Writing {creator_id} data to file...")
+        with open(os.path.join(output_path, f"{creator_id}.json"), "w") as f_obj:
+            json.dump(creator_datum, f_obj)
 
-    df = pd.DataFrame(creator_data)
-    logging.info("Writing data to file...")
-    df.to_csv('creator_test.csv', index = False)
+        # Stop scraping for a period of time to not be blocked as a bot.
+        if len(creator_ids) > 1:
+            logging.info("Sleeping...")
+            time.sleep(60)
