@@ -267,7 +267,7 @@ if __name__ == "__main__":
         if creator_datum == None:
             deleted_creators.append(creator_id)
             with open("deleted_creators.json", "w") as f_obj:
-                json.dump(creator_datum, f_obj)
+                json.dump(deleted_creators, f_obj)
                 
         # Write data to file.
         logging.info(f"Writing {creator_id} data to file...")
