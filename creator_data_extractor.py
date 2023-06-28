@@ -37,12 +37,12 @@ def get_digits(string, conv="float"):
         return int("".join(res))
     
 def get_live_soup(link, scroll=False):
-    """Returns a bs4 soup object of the given link.
+    """Returns a bs4 soup object of the given link. Returns None if it is a deleted kickstarter account.
     
     link [str] - A link to a website.
     scroll [bool] - True if you want selenium to keep scrolling down till loading no longer happens.
     False by default"""
-    driver = uc.Chrome()
+    driver = uc.Chrome(executable_path=r"D:\Jaber Chowdhury\chromedriver.exe")
     driver.get(link)
 
     # If there is a capcha, wait for a minute for user to finish it.
@@ -52,6 +52,15 @@ def get_live_soup(link, scroll=False):
         pass
     else:
         time.sleep(60)
+    
+    # If it is a deleted account, return.
+    try:
+        deleted_elem = driver.find_element(By.CSS_SELECTOR, 'div[class="center"]')
+    except:
+        pass
+    else:
+        driver.quit()
+        return
     
     if not scroll:
         time.sleep(1)
@@ -121,14 +130,17 @@ def parse_data_project(data_project):
 
 def extract_creator_data(path, is_link=True):
     """Returns a dictionary of the data for the creator. If passed a file, it should be of
-    a format like 'Dice Dungeons — About.html'."""
+    a format like 'Dice Dungeons — About.html'. Returns None in case of a deleted account."""
     data = {}
 
     if is_link:
         # Extract data from available pages.
         about_soup = get_live_soup(path + "/about")
+
+        if about_soup == None:
+            return 
         created_soup = get_live_soup(path + "/created")   
-             
+
         # Do not try to scrap pages if they are not public.
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
             comment_soup = get_live_soup(path + "/comments", True)
@@ -233,21 +245,36 @@ if __name__ == "__main__":
         creator_ids = json.load(f_obj)
     os.makedirs(output_path, exist_ok=True)
 
-    # Get already extracted creators and remove them from creator_ids.
-    later = {"ghostislandcomic",}
-    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
-    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in extracted_creators and creator_id not in later]
+    # Get deleted creators.
+    deleted_creators = []
+    if os.path.exists("deleted_creators.json"):
+        with open(f"deleted_creators.json", "r") as f_obj:
+            deleted_creators = json.load(f_obj)   
 
-    for creator_id in creator_ids:
+    later = {"ghostislandcomic", "960192600", "thirdwayind"}
+    
+    # Get already extracted creators and remove them from creator_ids.
+    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
+    
+    skip = extracted_creators | later | set(deleted_creators)
+    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
+
+    for i, creator_id in enumerate(creator_ids):
         logging.info(f"Started extracting {creator_id} data...")
         creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
-    
+
+        # Update deleted_creators.json in case of a deleted creator.
+        if creator_datum == None:
+            deleted_creators.append(creator_id)
+            with open("deleted_creators.json", "w") as f_obj:
+                json.dump(creator_datum, f_obj)
+                
         # Write data to file.
         logging.info(f"Writing {creator_id} data to file...")
         with open(os.path.join(output_path, f"{creator_id}.json"), "w") as f_obj:
             json.dump(creator_datum, f_obj)
 
         # Stop scraping for a period of time to not be blocked as a bot.
-        if len(creator_ids) > 1:
+        if len(creator_ids) > 1 and i == 5:
             logging.info("Sleeping...\n")
-            time.sleep(60)
+            time.sleep(30)
