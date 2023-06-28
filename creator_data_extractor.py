@@ -104,7 +104,7 @@ def parse_data_project(data_project):
     result['backers'] = data_project['backers_count']
     result['state'] = data_project['state'].title()
     result['pwl'] = int(data_project['staff_pick'])
-    result['location'] = data_project['location']['short_name']
+    result['location'] = data_project.get('location', {}).get('short_name', "")
 
     if 'parent_name' in data_project['category']:
         result['subcategory'] = data_project['category']['name']
@@ -134,8 +134,12 @@ def extract_creator_data(path, is_link=True):
             comment_soup = get_live_soup(path + "/comments", True)
         else:
             comment_soup = None
-                   
-        if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None:
+
+        # Number of projects backed.
+        backed = extract_elem_text(about_soup, 'span[class="backed"]')
+        backed = get_digits(backed, "int")
+
+        if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None and backed != 0:
             backed_soup = get_live_soup(path + "/backed", True)
         else:
             backed_soup = None
@@ -174,9 +178,7 @@ def extract_creator_data(path, is_link=True):
     # Biography.
     data['biography'] = extract_elem_text(about_soup, 'div[class="grid-col-12 grid-col-8-sm grid-col-6-md"]').strip()
 
-    # Number of projects backed.
-    backed = extract_elem_text(about_soup, 'span[class="backed"]')
-    data['num_backed'] = get_digits(backed, "int")
+    data['num_backed'] = backed
 
     # Number of created projects.
     data['num_created'] = extract_elem_text(about_soup, 'a[class="nav--subnav__item__link nav--subnav__item__link--gray js-created-link"] > span').strip()
@@ -232,10 +234,10 @@ if __name__ == "__main__":
     os.makedirs(output_path, exist_ok=True)
 
     # Get already extracted creators and remove them from creator_ids.
+    later = {"ghostislandcomic",}
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
-    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in extracted_creators]
+    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in extracted_creators and creator_id not in later]
 
-    # creator_ids = ['mybirdbuddy']
     for creator_id in creator_ids:
         logging.info(f"Started extracting {creator_id} data...")
         creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
