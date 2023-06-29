@@ -275,6 +275,6 @@ if __name__ == "__main__":
             json.dump(creator_datum, f_obj)
 
         # Stop scraping for a period of time to not be blocked as a bot.
-        if len(creator_ids) > 1 and i == 5:
+        if len(creator_ids) > 1 and i % 10 == 0:
             logging.info("Sleeping...\n")
             time.sleep(30)
