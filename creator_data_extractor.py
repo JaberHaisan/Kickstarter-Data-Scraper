@@ -67,7 +67,7 @@ def main():
 
             elif i % 10 == 0:
                 time.sleep(30)
-                
+
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
     is float. Returns empty string if no digit found.
@@ -197,7 +197,19 @@ def extract_creator_data(path, is_link=True):
 
         if about_soup == None:
             return 
-        created_soup = get_live_soup(path + "/created")   
+        
+        # There may be multiple pages for created projects.
+        created_soup = get_live_soup(path + "/created")
+        created_soups = [created_soup]
+        while True:
+            next_elem = created_soup.select_one('a[rel="next"]')
+
+            # No further pages.
+            if next_elem == None:
+                break   
+            
+            created_soup = get_live_soup("https://www.kickstarter.com/" + next_elem['href'])
+            created_soups.append(created_soup)
 
         # Do not try to scrap pages if they are not public.
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
@@ -276,8 +288,10 @@ def extract_creator_data(path, is_link=True):
     data['comments'] = comments
 
     # Created projects.
-    created_project_elem = created_soup.select_one('div[data-projects]')
-    created_data_projects = json.loads(created_project_elem['data-projects'])
+    created_data_projects = []
+    for created_soup in created_soups:
+        created_project_elem = created_soup.select_one('div[data-projects]')
+        created_data_projects.extend(json.loads(created_project_elem['data-projects']))
 
     created_projects = []
     for created_data_project in created_data_projects:
