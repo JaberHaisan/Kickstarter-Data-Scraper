@@ -12,12 +12,62 @@ from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 
 # Location of creator_ids.json
-file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids.json"
+file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids_0.json"
 # Output folder.
 output_path = "Creator Output"
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
+def main():
+    # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
+    # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
+    # https://www.kickstarter.com/profile/mybirdbuddy/ # Multiple websites in about.
+
+    with open(file_path, "r") as f_obj:
+        creator_ids = json.load(f_obj)
+    os.makedirs(output_path, exist_ok=True)
+
+    # Get deleted creators.
+    deleted_creators = []
+    if os.path.exists("deleted_creators.json"):
+        with open(f"deleted_creators.json", "r") as f_obj:
+            deleted_creators = json.load(f_obj)   
+
+    # later = {"ghostislandcomic", "960192600", "thirdwayind", "dwarvenforge", "peak-design", "battlegrounds", "2101297466", "solgaarddesign"}
+    later = set()
+
+    # Get already extracted creators and remove them from creator_ids.
+    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
+    
+    skip = extracted_creators | later | set(deleted_creators)
+    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
+
+    for i, creator_id in enumerate(creator_ids, 1):
+        logging.info(f"Started extracting {creator_id} data...")
+        creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
+
+        # Update deleted_creators.json in case of a deleted creator.
+        if creator_datum == None:
+            deleted_creators.append(creator_id)
+            with open("deleted_creators.json", "w") as f_obj:
+                json.dump(deleted_creators, f_obj)
+            continue
+
+        # Write data to file.
+        logging.info(f"Writing {creator_id} data to file...")
+        with open(os.path.join(output_path, f"{creator_id}.json"), "w") as f_obj:
+            json.dump(creator_datum, f_obj)
+
+        # Stop scraping for a period of time to not be blocked as a bot.
+        if len(creator_ids) > 1 and i % 10 == 0:
+            logging.info("Sleeping...\n")
+
+            if i % 100 == 0:
+                time.sleep(10 * 60)
+
+            elif i % 10 == 0:
+                time.sleep(30)
+                
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
     is float. Returns empty string if no digit found.
@@ -245,50 +295,4 @@ def extract_creator_data(path, is_link=True):
     return data
 
 if __name__ == "__main__":
-    # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
-    # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
-    # https://www.kickstarter.com/profile/mybirdbuddy/ # Multiple websites in about.
-
-    with open(file_path, "r") as f_obj:
-        creator_ids = json.load(f_obj)
-    os.makedirs(output_path, exist_ok=True)
-
-    # Get deleted creators.
-    deleted_creators = []
-    if os.path.exists("deleted_creators.json"):
-        with open(f"deleted_creators.json", "r") as f_obj:
-            deleted_creators = json.load(f_obj)   
-
-    later = {"ghostislandcomic", "960192600", "thirdwayind", "dwarvenforge", "peak-design", "battlegrounds", "2101297466", "solgaarddesign"}
-    
-    # Get already extracted creators and remove them from creator_ids.
-    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
-    
-    skip = extracted_creators | later | set(deleted_creators)
-    creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
-
-    for i, creator_id in enumerate(creator_ids, 1):
-        logging.info(f"Started extracting {creator_id} data...")
-        creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
-
-        # Update deleted_creators.json in case of a deleted creator.
-        if creator_datum == None:
-            deleted_creators.append(creator_id)
-            with open("deleted_creators.json", "w") as f_obj:
-                json.dump(deleted_creators, f_obj)
-            continue
-
-        # Write data to file.
-        logging.info(f"Writing {creator_id} data to file...")
-        with open(os.path.join(output_path, f"{creator_id}.json"), "w") as f_obj:
-            json.dump(creator_datum, f_obj)
-
-        # Stop scraping for a period of time to not be blocked as a bot.
-        if len(creator_ids) > 1 and i % 10 == 0:
-            logging.info("Sleeping...\n")
-
-            if i % 100 == 0:
-                time.sleep(10 * 60)
-
-            elif i % 10 == 0:
-                time.sleep(30)
+    main()
