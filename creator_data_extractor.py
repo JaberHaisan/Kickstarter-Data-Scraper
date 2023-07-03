@@ -65,12 +65,20 @@ def get_live_soup(link, scroll=False):
     if not scroll:
         time.sleep(1)
     else:
+        scroll_num = 0
         while True:
             # Scroll down to bottom
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
-            # Wait to scroll. Break if no longer loading.
-            time.sleep(random.uniform(5, 7))
+            # Wait to scroll. 
+            if scroll_num % 10 == 0:
+                time.sleep(30)
+            else:
+                time.sleep(random.uniform(5, 7))
+
+            scroll_num += 1
+
+            # Stop scrolling if no longer loading.
             try:
                 elem = driver.find_element(By.CSS_SELECTOR, 'li[data-last_page="true"]')
             except:
@@ -251,7 +259,7 @@ if __name__ == "__main__":
         with open(f"deleted_creators.json", "r") as f_obj:
             deleted_creators = json.load(f_obj)   
 
-    later = {"ghostislandcomic", "960192600", "thirdwayind"}
+    later = {"ghostislandcomic", "960192600", "thirdwayind", "dwarvenforge", "peak-design", "battlegrounds", "2101297466", "solgaarddesign"}
     
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
@@ -259,7 +267,7 @@ if __name__ == "__main__":
     skip = extracted_creators | later | set(deleted_creators)
     creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
 
-    for i, creator_id in enumerate(creator_ids):
+    for i, creator_id in enumerate(creator_ids, 1):
         logging.info(f"Started extracting {creator_id} data...")
         creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
 
@@ -268,7 +276,8 @@ if __name__ == "__main__":
             deleted_creators.append(creator_id)
             with open("deleted_creators.json", "w") as f_obj:
                 json.dump(deleted_creators, f_obj)
-                
+            continue
+
         # Write data to file.
         logging.info(f"Writing {creator_id} data to file...")
         with open(os.path.join(output_path, f"{creator_id}.json"), "w") as f_obj:
@@ -277,4 +286,9 @@ if __name__ == "__main__":
         # Stop scraping for a period of time to not be blocked as a bot.
         if len(creator_ids) > 1 and i % 10 == 0:
             logging.info("Sleeping...\n")
-            time.sleep(30)
+
+            if i % 100 == 0:
+                time.sleep(10 * 60)
+
+            elif i % 10 == 0:
+                time.sleep(30)
