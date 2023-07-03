@@ -115,7 +115,7 @@ def get_live_soup(link, scroll=False):
     if not scroll:
         time.sleep(1)
     else:
-        scroll_num = 0
+        scroll_num = 1
         while True:
             # Scroll down to bottom
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -165,9 +165,12 @@ def parse_data_project(data_project):
     result['url'] = data_project['urls']['web']['project']
     result['creator_id'] = data_project['creator']['id']
     result['blurb'] = data_project['blurb']
-    result['currency'] = data_project['currency']
-    result['goal'] = data_project['goal']
-    result['pledged'] = data_project['pledged']
+
+    # Convert currencies to USD.
+    result['currency'] = 'USD'
+    result['goal'] = data_project['goal'] * data_project['static_usd_rate']
+    result['pledged'] = data_project['usd_pledged']
+
     result['backers'] = data_project['backers_count']
     result['state'] = data_project['state'].title()
     result['pwl'] = int(data_project['staff_pick'])
@@ -308,5 +311,6 @@ def extract_creator_data(path, is_link=True):
 
     return data
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
+print(extract_creator_data("https://www.kickstarter.com/profile/restorationgames")['created_projects'])
