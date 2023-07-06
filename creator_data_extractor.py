@@ -88,30 +88,31 @@ def get_digits(string, conv="float"):
             return ""
         return int("".join(res))
     
-def get_live_soup(link, scroll=False):
+def get_live_soup(link, scroll=False, given_driver=None):
     """Returns a bs4 soup object of the given link. Returns None if it is a deleted kickstarter account.
     
     link [str] - A link to a website.
     scroll [bool] - True if you want selenium to keep scrolling down till loading no longer happens.
-    False by default"""
-    driver = uc.Chrome(executable_path=chromedriver_path)
+    False by default.
+    given_driver [selenium webdriver] - A webdriver. None by default."""
+    if given_driver == None:
+        driver = uc.Chrome(executable_path=chromedriver_path)
+    else:
+        driver = given_driver
     driver.get(link)
 
+    soup = BeautifulSoup(driver.page_source, "lxml")
+
     # If there is a capcha, Beep and wait for a minute for user to finish it.
-    try:
-        capcha_elem = driver.find_element(By.CSS_SELECTOR, 'div[id="px-captcha"]')
-    except:
-        pass
-    else:
+    capcha_elem = soup.select_one('div[id="px-captcha"]')
+    if capcha_elem != None:
         winsound.Beep(440, 1000)        
         time.sleep(60)
     
-    # If it is a deleted account, return.
-    try:
-        deleted_elem = driver.find_element(By.CSS_SELECTOR, 'div[class="center"]')
-    except:
-        pass
-    else:
+    # If it is a deleted account or there is a 404 error, return.
+    deleted_elem = soup.select_one('div[class="center"]')
+    non_existent_elem = soup.select_one('a[href="/?ref=404-ksr10"]')
+    if deleted_elem != None or non_existent_elem != None:
         driver.quit()
         return
     
@@ -123,7 +124,11 @@ def get_live_soup(link, scroll=False):
             # Scroll down to bottom
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
-            # Wait to scroll. 
+            # Wait to scroll. Notify if unusually high number of scrolls (which may mean that
+            # there is a 403 error).
+            if scroll_num % 30 == 0:
+                winsound.Beep(440, 1000)
+
             if scroll_num % 10 == 0:
                 time.sleep(30)
             else:
@@ -139,9 +144,10 @@ def get_live_soup(link, scroll=False):
             else:
                 break
 
-    soup = BeautifulSoup(driver.page_source, "lxml")
-    driver.quit()
+    if given_driver == None:
+        driver.quit()
 
+    soup = BeautifulSoup(driver.page_source, "lxml")
     return soup
 
 def extract_elem_text(soup, selector):
@@ -198,14 +204,15 @@ def extract_creator_data(path, is_link=True):
     data = {}
 
     if is_link:
+        driver = uc.Chrome(executable_path=chromedriver_path)
         # Extract data from available pages.
-        about_soup = get_live_soup(path + "/about")
+        about_soup = get_live_soup(path + "/about", given_driver=driver)
 
         if about_soup == None:
             return 
         
         # There may be multiple pages for created projects.
-        created_soup = get_live_soup(path + "/created")
+        created_soup = get_live_soup(path + "/created", given_driver=driver)
         created_soups = [created_soup]
         while True:
             next_elem = created_soup.select_one('a[rel="next"]')
@@ -214,12 +221,12 @@ def extract_creator_data(path, is_link=True):
             if next_elem == None:
                 break   
             
-            created_soup = get_live_soup("https://www.kickstarter.com/" + next_elem['href'])
+            created_soup = get_live_soup("https://www.kickstarter.com/" + next_elem['href'], given_driver=driver)
             created_soups.append(created_soup)
 
         # Do not try to scrap pages if they are not public.
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
-            comment_soup = get_live_soup(path + "/comments", True)
+            comment_soup = get_live_soup(path + "/comments", True, driver)
         else:
             comment_soup = None
 
@@ -228,9 +235,11 @@ def extract_creator_data(path, is_link=True):
         backed = get_digits(backed, "int")
 
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None and backed != 0:
-            backed_soup = get_live_soup(path, True)
+            backed_soup = get_live_soup(path, True, driver)
         else:
             backed_soup = None
+        
+        driver.quit()
     else:
         with open(path + " — About.html", encoding='utf8', errors="backslashreplace") as infile:
             about_soup = BeautifulSoup(infile, "lxml")
