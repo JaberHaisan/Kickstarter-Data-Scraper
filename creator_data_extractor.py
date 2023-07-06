@@ -5,6 +5,7 @@ import json
 import random
 import logging
 import os
+import winsound
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -15,6 +16,8 @@ from bs4 import BeautifulSoup
 file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids_0.json"
 # Output folder.
 output_path = "Creator Output"
+# Chromedriver path
+chromedriver_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -33,8 +36,7 @@ def main():
         with open(f"deleted_creators.json", "r") as f_obj:
             deleted_creators = json.load(f_obj)   
 
-    # later = {"ghostislandcomic", "960192600", "thirdwayind", "dwarvenforge", "peak-design", "battlegrounds", "2101297466", "solgaarddesign"}
-    later = set()
+    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994"}
 
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
@@ -92,15 +94,16 @@ def get_live_soup(link, scroll=False):
     link [str] - A link to a website.
     scroll [bool] - True if you want selenium to keep scrolling down till loading no longer happens.
     False by default"""
-    driver = uc.Chrome(executable_path=r"D:\Jaber Chowdhury\chromedriver.exe")
+    driver = uc.Chrome(executable_path=chromedriver_path)
     driver.get(link)
 
-    # If there is a capcha, wait for a minute for user to finish it.
+    # If there is a capcha, Beep and wait for a minute for user to finish it.
     try:
         capcha_elem = driver.find_element(By.CSS_SELECTOR, 'div[id="px-captcha"]')
     except:
         pass
     else:
+        winsound.Beep(440, 1000)        
         time.sleep(60)
     
     # If it is a deleted account, return.
@@ -124,7 +127,7 @@ def get_live_soup(link, scroll=False):
             if scroll_num % 10 == 0:
                 time.sleep(30)
             else:
-                time.sleep(random.uniform(5, 7))
+                time.sleep(random.uniform(2, 3))
 
             scroll_num += 1
 
@@ -225,7 +228,7 @@ def extract_creator_data(path, is_link=True):
         backed = get_digits(backed, "int")
 
         if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None and backed != 0:
-            backed_soup = get_live_soup(path + "/backed", True)
+            backed_soup = get_live_soup(path, True)
         else:
             backed_soup = None
     else:
@@ -311,6 +314,5 @@ def extract_creator_data(path, is_link=True):
 
     return data
 
-# if __name__ == "__main__":
-#     main()
-print(extract_creator_data("https://www.kickstarter.com/profile/restorationgames")['created_projects'])
+if __name__ == "__main__":
+    main()
