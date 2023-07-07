@@ -13,52 +13,42 @@ from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 
 # Location of creator_ids.json
-file_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids_0.json"
+CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids_0.json"
 # Output folder.
-output_path = "Creator Output"
+OUTPUT_PATH = "Creator Output"
 # Chromedriver path
-chromedriver_path = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
+CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
+
+# Get deleted creators.
+deleted_creators = []
+if os.path.exists("deleted_creators.json"):
+    with open(f"deleted_creators.json", "r") as f_obj:
+        deleted_creators = json.load(f_obj)   
 
 def main():
     # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
     # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
     # https://www.kickstarter.com/profile/mybirdbuddy/ # Multiple websites in about.
 
-    with open(file_path, "r") as f_obj:
+    with open(CREATOR_FILE_PATH, "r") as f_obj:
         creator_ids = json.load(f_obj)
-    os.makedirs(output_path, exist_ok=True)
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-    # Get deleted creators.
-    deleted_creators = []
-    if os.path.exists("deleted_creators.json"):
-        with open(f"deleted_creators.json", "r") as f_obj:
-            deleted_creators = json.load(f_obj)   
-
-    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994"}
+    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames"}
 
     # Get already extracted creators and remove them from creator_ids.
-    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(output_path))
+    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
     
     skip = extracted_creators | later | set(deleted_creators)
     creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
 
     for i, creator_id in enumerate(creator_ids, 1):
-        logging.info(f"Started extracting {creator_id} data...")
-        creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
-
-        # Update deleted_creators.json in case of a deleted creator.
-        if creator_datum == None:
-            deleted_creators.append(creator_id)
-            with open("deleted_creators.json", "w") as f_obj:
-                json.dump(deleted_creators, f_obj)
-            continue
-
-        # Write data to file.
-        logging.info(f"Writing {creator_id} data to file...")
-        with open(os.path.join(output_path, f"{creator_id}.json"), "w") as f_obj:
-            json.dump(creator_datum, f_obj)
+        extract_write(creator_id)
+        
+        with open("deleted_creators.json", "w") as f_obj:
+            json.dump(deleted_creators, f_obj)
 
         # Stop scraping for a period of time to not be blocked as a bot.
         if len(creator_ids) > 1 and i % 10 == 0:
@@ -96,7 +86,7 @@ def get_live_soup(link, scroll=False, given_driver=None):
     False by default.
     given_driver [selenium webdriver] - A webdriver. None by default."""
     if given_driver == None:
-        driver = uc.Chrome(executable_path=chromedriver_path)
+        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH)
     else:
         driver = given_driver
     driver.get(link)
@@ -107,7 +97,7 @@ def get_live_soup(link, scroll=False, given_driver=None):
     capcha_elem = soup.select_one('div[id="px-captcha"]')
     if capcha_elem != None:
         winsound.Beep(440, 1000)        
-        time.sleep(60)
+        time.sleep(45)
     
     # If it is a deleted account or there is a 404 error, return.
     deleted_elem = soup.select_one('div[class="center"]')
@@ -126,13 +116,13 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
             # Wait to scroll. Notify if unusually high number of scrolls (which may mean that
             # there is a 403 error).
-            if scroll_num % 30 == 0:
+            if scroll_num % 60 == 0:
                 winsound.Beep(440, 1000)
 
-            if scroll_num % 10 == 0:
+            if scroll_num % 30 == 0:
                 time.sleep(30)
             else:
-                time.sleep(random.uniform(2, 3))
+                time.sleep(random.uniform(1, 2))
 
             scroll_num += 1
 
@@ -204,7 +194,7 @@ def extract_creator_data(path, is_link=True):
     data = {}
 
     if is_link:
-        driver = uc.Chrome(executable_path=chromedriver_path)
+        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH)
         # Extract data from available pages.
         about_soup = get_live_soup(path + "/about", given_driver=driver)
 
@@ -322,6 +312,21 @@ def extract_creator_data(path, is_link=True):
     data['backed_projects'] = backed_projects
 
     return data
+
+def extract_write(creator_id):
+    """Takes a creator_id, extracts data from pages and writes
+    the data as a json file to output_path"""
+    logging.info(f"Started extracting {creator_id} data...")
+    creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
+
+    # Update deleted_creators.json in case of a deleted creator.
+    if creator_datum == None:
+        deleted_creators.append(creator_id)
+
+    # Write data to file.
+    logging.info(f"Writing {creator_id} data to file...")
+    with open(os.path.join(OUTPUT_PATH, f"{creator_id}.json"), "w") as f_obj:
+        json.dump(creator_datum, f_obj)
 
 if __name__ == "__main__":
     main()
