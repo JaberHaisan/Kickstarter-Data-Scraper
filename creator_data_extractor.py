@@ -6,6 +6,7 @@ import random
 import logging
 import os
 import winsound
+import multiprocessing
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -36,7 +37,7 @@ def main():
         creator_ids = json.load(f_obj)
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames"}
+    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062"}
 
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
@@ -44,22 +45,27 @@ def main():
     skip = extracted_creators | later | set(deleted_creators)
     creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
 
-    for i, creator_id in enumerate(creator_ids, 1):
-        extract_write(creator_id)
+    pool = multiprocessing.Pool()
+
+    chunk_size = 2
+    total = 0
+    for i in range(0, len(creator_ids), chunk_size):
+        pool.map(extract_write, creator_ids[i:i + chunk_size])
         
         with open("deleted_creators.json", "w") as f_obj:
             json.dump(deleted_creators, f_obj)
 
         # Stop scraping for a period of time to not be blocked as a bot.
-        if len(creator_ids) > 1 and i % 10 == 0:
+        total += chunk_size
+        if total % 10 == 0:
             logging.info("Sleeping...\n")
-
-            if i % 100 == 0:
-                time.sleep(10 * 60)
-
-            elif i % 10 == 0:
-                time.sleep(30)
-
+            time.sleep(60)
+            if total % 100 == 0:
+                time.sleep(10 * 60 - 60)
+    
+    pool.close()
+    pool.join()
+                
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
     is float. Returns empty string if no digit found.
