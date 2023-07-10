@@ -19,6 +19,8 @@ CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Ki
 OUTPUT_PATH = "Creator Output"
 # Chromedriver path
 CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
+# Number of processes per try.
+chunk_size = 4
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 
@@ -37,7 +39,7 @@ def main():
         creator_ids = json.load(f_obj)
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062"}
+    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach"}
 
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
@@ -47,7 +49,6 @@ def main():
 
     pool = multiprocessing.Pool()
 
-    chunk_size = 2
     total = 0
     for i in range(0, len(creator_ids), chunk_size):
         pool.map(extract_write, creator_ids[i:i + chunk_size])
@@ -57,11 +58,11 @@ def main():
 
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
-        if total % 10 == 0:
+        if total % (chunk_size * 3) == 0:
             logging.info("Sleeping...\n")
-            time.sleep(60)
-            if total % 100 == 0:
-                time.sleep(10 * 60 - 60)
+            time.sleep(30)
+            if total % (chunk_size * 10) == 0:
+                time.sleep(3 * 60 - 30)
     
     pool.close()
     pool.join()
@@ -279,9 +280,9 @@ def extract_creator_data(path, is_link=True):
     # Websites.
     websites = [elem['href'] for elem in about_soup.select('ul[class="menu-submenu mb6"] > li > a')]
     data['num_websites'] = len(websites)
-    data['has_facebook'] = any("facebook" in website for website in websites)
-    data['has_twitter'] = any("twitter" in website for website in websites)
-    data['has_instagram'] = any("instagram" in website for website in websites)
+    data['has_facebook'] = int(any("facebook" in website for website in websites))
+    data['has_twitter'] = int(any("twitter" in website for website in websites))
+    data['has_instagram'] = int(any("instagram" in website for website in websites))
     data['websites'] = websites
 
     # Comments.
