@@ -16,7 +16,7 @@ from selenium.webdriver.common.by import By
 import pyautogui
 from bs4 import BeautifulSoup
 
-# Location of new_creator_ids.json
+# Location of json with creator ids.
 CREATOR_ID_PATH = r'D:\unscraped_creators_0.json'
 # Location of kickstarter_existing_links.json
 EXISTING_LINKS_PATH = r'D:\kickstarter_existing_links.json' 
@@ -172,7 +172,7 @@ def get_live_soup(link, scroll=False, given_driver=None):
     False by default.
     given_driver [selenium webdriver] - A webdriver. None by default."""
     if given_driver == None:
-        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH)
+        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True)
     else:
         driver = given_driver
     driver.get(link)
@@ -282,7 +282,7 @@ def extract_creator_data(creator_id):
     logging.info(f"Started extracting {creator_id} data...")
     path = r"https://www.kickstarter.com/profile/" + str(creator_id)
 
-    driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH)
+    driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True)
     # Extract data from available pages. There may be multiple pages for created projects.
 
     try:
