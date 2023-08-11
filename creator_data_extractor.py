@@ -173,7 +173,9 @@ def parse_data_project(data_project):
     result['blurb'] = data_project['blurb']
 
     # Convert currencies to USD.
-    result['currency'] = 'USD'
+    result['original_currency'] = data_project['currency']
+    result['converted_currency'] = 'USD'
+    result['conversion_rate'] = data_project['static_usd_rate']
     result['goal'] = data_project['goal'] * data_project['static_usd_rate']
     result['pledged'] = data_project['usd_pledged']
 
@@ -329,6 +331,7 @@ def extract_write(creator_id):
     # Update deleted_creators.json in case of a deleted creator.
     if creator_datum == None:
         deleted_creators.append(creator_id)
+        return
 
     # Write data to file.
     logging.info(f"Writing {creator_id} data to file...")
