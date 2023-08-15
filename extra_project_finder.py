@@ -6,7 +6,7 @@ import random
 import logging
 import os
 import winsound
-import multiprocessing
+import threading
 import sqlite3
 import traceback
 
@@ -27,16 +27,22 @@ CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Ki
 # Proton vpn windows taskbar location.
 icon_num = 5 
 
-# Number of processes per try.
-chunk_size = 10
+# Number of threads per try.
+chunk_size = 5
 # Set logging. 
 logging.getLogger('uc').setLevel(logging.ERROR)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 # Pyautogui settings.
 pyautogui.PAUSE = 1
 pyautogui.FAILSAFE = True
-  
+
+results = []
+logging.info("Creating driver instances...")
+drivers = [uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True) for i in range(chunk_size)]
+
 def main():
+    click_random(icon_num)
+
     # Get connection to database file.
     con = create_project_db(OUTPUT_PATH)
     cur = con.cursor()
@@ -54,16 +60,19 @@ def main():
     skip = extracted | deleted
     creator_ids = [creator_id for creator_id in new_creator_ids if creator_id not in skip]
 
-    pool = multiprocessing.Pool()
-
-    click_random(icon_num)
-
     total = 0
     for i in range(0, len(creator_ids), chunk_size):
         # Retry after changing server in case of errors.
         while True:
+            results.clear()
+            threads = []
             try:
-                results = pool.map(extract_creator_data, creator_ids[i:i + chunk_size])
+                for j, creator_id in enumerate(creator_ids[i:i + chunk_size]):
+                    thread = threading.Thread(target=extract_creator_data, args=(creator_id, j))
+                    thread.start()
+                    threads.append(thread)
+                for thread in threads:
+                    thread.join()
             except Exception:
                 logging.info(f"\nException -\n {traceback.format_exc()} \nRetrying...")
                 winsound.Beep(440, 1000)
@@ -86,8 +95,8 @@ def main():
             logging.info("Changing server...\n")
             click_random(icon_num)
     
-    pool.close()
-    pool.join()
+    for driver in drivers:
+        driver.quit()
 
 def create_project_db(path):
     """Creates projects.db in path and returns a connection."""
@@ -142,10 +151,10 @@ def click_random(icon_num):
     
     icon_num [int] - Index of proton vpn icon on the windows taskbar."""
     pyautogui.hotkey('win', str(icon_num))
-    pyautogui.click(336, 563, clicks=2, interval=0.2)
+    pyautogui.click(333, 563, clicks=3, interval=0.15)
     time.sleep(2)
     pyautogui.hotkey('alt', 'tab')
-    time.sleep(7)
+    time.sleep(10)
 
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
@@ -189,7 +198,8 @@ def get_live_soup(link, scroll=False, given_driver=None):
     deleted_elem = soup.select_one('div[class="center"]')
     non_existent_elem = soup.select_one('a[href="/?ref=404-ksr10"]')
     if deleted_elem != None or non_existent_elem != None:
-        driver.quit()
+        if given_driver == None:
+            driver.quit()
         return
     
     if not scroll:
@@ -278,18 +288,22 @@ def parse_data_project(data_project):
 
     return result
 
-def extract_creator_data(creator_id):
+def extract_creator_data(creator_id, index=None):
     """Returns a dictionary of the data for the creator. Returns None in case of a deleted account."""
     logging.info(f"Started extracting {creator_id} data...")
     path = r"https://www.kickstarter.com/profile/" + str(creator_id)
 
-    driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True)
+    if index == None:
+        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True)
+    else:
+        driver = drivers[index]
     # Extract data from available pages. There may be multiple pages for created projects.
 
     try:
         created_soup = get_live_soup(path + "/created", given_driver=driver)
     except Exception as e:
-        driver.quit()
+        if index == None:
+            driver.quit()
         raise e
 
     if created_soup == None:
@@ -305,8 +319,9 @@ def extract_creator_data(creator_id):
         
         created_soup = get_live_soup("https://www.kickstarter.com/" + next_elem['href'], given_driver=driver)
         created_soups.append(created_soup)
- 
-    driver.quit()          
+
+    if index == None:
+        driver.quit()          
 
     # Created projects.
     created_data_projects = []
@@ -320,7 +335,7 @@ def extract_creator_data(creator_id):
         if parsed != None:
             created_projects.append(parsed)
 
-    return (creator_id, created_projects)
+    results.append((creator_id, created_projects))
 
 if __name__ == "__main__":
     main()
