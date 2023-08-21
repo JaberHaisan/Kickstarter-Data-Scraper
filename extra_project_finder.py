@@ -18,9 +18,9 @@ from bs4 import BeautifulSoup
 
 # Location of json with creator ids.
 CREATOR_ID_PATH = r'D:\unscraped_creators_0.json'
-# Location of kickstarter_existing_links.json
+# Location of json with already scraped project links.
 EXISTING_LINKS_PATH = r'D:\kickstarter_existing_links.json' 
-# Output file.
+# Output file path.
 OUTPUT_PATH = r"D:"
 # Chromedriver path
 CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
@@ -36,12 +36,13 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 pyautogui.PAUSE = 1
 pyautogui.FAILSAFE = True
 
-results = []
-logging.info("Creating driver instances...")
-drivers = [uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True) for i in range(chunk_size)]
-
 def main():
-    click_random(icon_num)
+    global results, drivers
+
+    results = []
+    click_random(icon_num, False)
+    logging.info("Creating driver instances...")
+    drivers = [uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH, headless=True) for i in range(chunk_size)]
 
     # Get connection to database file.
     con = create_project_db(OUTPUT_PATH)
@@ -52,10 +53,10 @@ def main():
         new_creator_ids = json.load(f_obj)
 
     # Get already scraped projects.
-    extracted = set(int(id[0]) for id in cur.execute("SELECT creator_id FROM projects;"))
+    extracted = set(int(cid[0]) for cid in cur.execute("SELECT creator_id FROM projects;"))
 
     # Get deleted creators.
-    deleted = set(int(id[0]) for id in cur.execute("SELECT creator_id FROM deleted_creators;"))
+    deleted = set(int(cid[0]) for cid in cur.execute("SELECT creator_id FROM deleted_creators;"))
     
     skip = extracted | deleted
     creator_ids = [creator_id for creator_id in new_creator_ids if creator_id not in skip]
@@ -88,18 +89,24 @@ def main():
                 cur.execute("INSERT OR IGNORE INTO deleted_creators VALUES (?)", (creator_id,))
         con.commit()                
 
-        # Change server after scraping a certain amount to not
-        # be blocked by kickstarter.
+        # Change server after scraping a certain amount to not be blocked by kickstarter. Also refresh drivers
+        # to obfuscate bot detection.
         total += chunk_size
         if total % (chunk_size * 4) == 0:
             logging.info("Changing server...\n")
-            click_random(icon_num)
-    
-    for driver in drivers:
-        driver.quit()
+            click_random(icon_num, False)
+
+            for driver in drivers:
+                driver.quit()
+            
+            drivers = [uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH, headless=True) for i in range(chunk_size)]
 
 def create_project_db(path):
-    """Creates projects.db in path and returns a connection."""
+    """
+    Creates projects.db in path and returns a connection.
+    
+    path[str] - Location to save/load 'projects.db'
+    """
     con = sqlite3.connect(os.path.join(path, "projects.db"))
     cur = con.cursor()
 
@@ -145,24 +152,31 @@ def create_project_db(path):
     con.commit()
     return con
 
-def click_random(icon_num):
-    """Clicks random button in proton vpn. Proton VPN needs
+def click_random(icon_num, wait=True):
+    """
+    Clicks random button in proton vpn. Proton VPN needs
     to be open on the profiles page. 
     
-    icon_num [int] - Index of proton vpn icon on the windows taskbar."""
+    icon_num [int] - Index of proton vpn icon on the windows taskbar.
+    wait [bool] - If True, function will sleep for 10s to make sure Proton Vpn
+    connects and otherwise it will not sleep. True by default.
+    """
     pyautogui.hotkey('win', str(icon_num))
     pyautogui.click(333, 563, clicks=3, interval=0.15)
     time.sleep(2)
     pyautogui.hotkey('alt', 'tab')
-    time.sleep(10)
+    if wait:
+        time.sleep(10)
 
 def get_digits(string, conv="float"):
-    """Returns only digits from string as a single int/float. Default
+    """
+    Returns only digits from string as a single int/float. Default
     is float. Returns empty string if no digit found.
 
     Inputs: 
     string[str] - Any string.
-    conv[str] - Enter "float" if you need float. Otherwise will provide integer."""
+    conv[str] - Enter "float" if you need float. Otherwise will provide integer. "float" by default.
+    """
     if conv == "float":
         res = re.findall(r'[0-9.]+', string)
         if res == "":
@@ -175,12 +189,14 @@ def get_digits(string, conv="float"):
         return int("".join(res))
     
 def get_live_soup(link, scroll=False, given_driver=None):
-    """Returns a bs4 soup object of the given link. Returns None if it is a deleted kickstarter account.
+    """
+    Returns a bs4 soup object of the given link. Returns None if it is a deleted kickstarter account.
     
     link [str] - A link to a website.
     scroll [bool] - True if you want selenium to keep scrolling down till loading no longer happens.
     False by default.
-    given_driver [selenium webdriver] - A webdriver. None by default."""
+    given_driver [selenium webdriver] - A webdriver. None by default.
+    """
     if given_driver == None:
         driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH, headless=True)
     else:
@@ -202,9 +218,7 @@ def get_live_soup(link, scroll=False, given_driver=None):
             driver.quit()
         return
     
-    if not scroll:
-        time.sleep(1)
-    else:
+    if scroll:
         scroll_num = 1
         while True:
             # Scroll down to bottom
@@ -237,12 +251,14 @@ def get_live_soup(link, scroll=False, given_driver=None):
     return soup
 
 def extract_elem_text(soup, selector):
-    """Returns resulting text of using given selector in soup.
+    """
+    Returns resulting text of using given selector in soup.
     If there was no text, returns empty string. 
     
     Inputs:
     soup[bs4.BeautifulSoup] - A soup.
-    selector[str] - A css selector."""
+    selector[str] - A css selector.
+    """
     elem = soup.select_one(selector)
     if elem == None:
         return ""
@@ -250,10 +266,12 @@ def extract_elem_text(soup, selector):
         return elem.getText()
 
 def parse_data_project(data_project):
-    """Parses a kickstarter data project dictionary and returns a dictionary of
+    """
+    Parses a kickstarter data project dictionary and returns a dictionary of
     required keys.
     
-    data-project [dict]- A kickstarter data project dict."""
+    data-project [dict]- A kickstarter data project dict.
+    """
     result = {}
 
     result['name'] = data_project['name']
@@ -289,7 +307,13 @@ def parse_data_project(data_project):
     return result
 
 def extract_creator_data(creator_id, index=None):
-    """Returns a dictionary of the data for the creator. Returns None in case of a deleted account."""
+    """
+    Returns a dictionary of the data for the creator. Returns None in case of a deleted account.
+    Can load a webdriver from the given index from the global list drivers (optional).
+    
+    creator_id [str/int] - A kickstarter creator id.
+    index [int] - Index of webdriver in drivers for this function call.
+    """
     logging.info(f"Started extracting {creator_id} data...")
     path = r"https://www.kickstarter.com/profile/" + str(creator_id)
 
