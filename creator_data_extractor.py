@@ -11,6 +11,7 @@ import multiprocessing
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 
+import pyautogui
 from bs4 import BeautifulSoup
 
 # Location of creator_ids.json
@@ -19,16 +20,25 @@ CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Ki
 OUTPUT_PATH = "Creator Output"
 # Chromedriver path
 CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
+# Proton vpn windows taskbar location.
+icon_num = 5 
+
 # Number of processes per try.
-chunk_size = 4
+chunk_size = 3
 # Set logging.
+logging.getLogger('uc').setLevel(logging.ERROR)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
+# Pyautogui settings.
+pyautogui.PAUSE = 1
+pyautogui.FAILSAFE = True
 
 # Get deleted creators.
 deleted_creators = []
 if os.path.exists("deleted_creators.json"):
     with open(f"deleted_creators.json", "r") as f_obj:
         deleted_creators = json.load(f_obj)   
+
+pvn_lock = multiprocessing.Lock()
 
 def main():
     # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
@@ -40,7 +50,7 @@ def main():
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
     later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach"}
-
+    
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
     
@@ -49,6 +59,7 @@ def main():
 
     pool = multiprocessing.Pool()
 
+    click_random(icon_num)
     total = 0
     for i in range(0, len(creator_ids), chunk_size):
         pool.map(extract_write, creator_ids[i:i + chunk_size])
@@ -60,13 +71,28 @@ def main():
         total += chunk_size
         if total % (chunk_size * 3) == 0:
             logging.info("Sleeping...\n")
-            time.sleep(30)
-            if total % (chunk_size * 10) == 0:
-                time.sleep(3 * 60 - 30)
+            click_random(icon_num)
     
     pool.close()
     pool.join()
-                
+
+def click_random(icon_num, wait=True):
+    """
+    Clicks random button in proton vpn. Proton VPN needs
+    to be open on the profiles page. 
+    
+    icon_num [int] - Index of proton vpn icon on the windows taskbar.
+    wait [bool] - If True, function will sleep for 10s to make sure Proton Vpn
+    connects and otherwise it will not sleep. True by default.
+    """
+    with pvn_lock:
+        pyautogui.hotkey('win', str(icon_num))
+        pyautogui.click(333, 563, clicks=3, interval=0.15)
+        time.sleep(2)
+        pyautogui.hotkey('alt', 'tab')
+        if wait:
+            time.sleep(10)
+
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
     is float. Returns empty string if no digit found.
@@ -93,18 +119,18 @@ def get_live_soup(link, scroll=False, given_driver=None):
     False by default.
     given_driver [selenium webdriver] - A webdriver. None by default."""
     if given_driver == None:
-        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH)
+        driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
     else:
         driver = given_driver
     driver.get(link)
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
-    # If there is a capcha, Beep and wait for a minute for user to finish it.
+    # If there is a capcha, Beep and change server.
     capcha_elem = soup.select_one('div[id="px-captcha"]')
     if capcha_elem != None:
         winsound.Beep(440, 1000)        
-        time.sleep(45)
+        click_random(icon_num)
     
     # If it is a deleted account or there is a 404 error, return.
     deleted_elem = soup.select_one('div[class="center"]')
@@ -123,13 +149,11 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
             # Wait to scroll. Notify if unusually high number of scrolls (which may mean that
             # there is a 403 error).
-            if scroll_num % 60 == 0:
+            if scroll_num % 50 == 0:
                 winsound.Beep(440, 1000)
+                click_random(icon_num)
 
-            if scroll_num % 30 == 0:
-                time.sleep(30)
-            else:
-                time.sleep(random.uniform(1, 2))
+            time.sleep(random.uniform(1, 2))
 
             scroll_num += 1
 
@@ -203,7 +227,7 @@ def extract_creator_data(path, is_link=True):
     data = {}
 
     if is_link:
-        driver = uc.Chrome(executable_path=CHROMEDRIVER_PATH)
+        driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
         # Extract data from available pages.
         about_soup = get_live_soup(path + "/about", given_driver=driver)
 
