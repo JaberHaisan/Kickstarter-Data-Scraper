@@ -38,8 +38,6 @@ if os.path.exists("deleted_creators.json"):
     with open(f"deleted_creators.json", "r") as f_obj:
         deleted_creators = json.load(f_obj)   
 
-pvn_lock = multiprocessing.Lock()
-
 def main():
     # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
     # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
@@ -62,14 +60,16 @@ def main():
     click_random(icon_num)
     total = 0
     for i in range(0, len(creator_ids), chunk_size):
-        pool.map(extract_write, creator_ids[i:i + chunk_size])
+        res = pool.map(extract_write, creator_ids[i:i + chunk_size])
         
-        with open("deleted_creators.json", "w") as f_obj:
-            json.dump(deleted_creators, f_obj)
+        if res:
+            deleted_creators.extend(res)
+            with open("deleted_creators.json", "w") as f_obj:
+                json.dump(deleted_creators, f_obj)
 
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
-        if total % (chunk_size * 3) == 0:
+        if total % 1 == 0:
             logging.info("Sleeping...\n")
             click_random(icon_num)
     
@@ -85,13 +85,12 @@ def click_random(icon_num, wait=True):
     wait [bool] - If True, function will sleep for 10s to make sure Proton Vpn
     connects and otherwise it will not sleep. True by default.
     """
-    with pvn_lock:
-        pyautogui.hotkey('win', str(icon_num))
-        pyautogui.click(333, 563, clicks=3, interval=0.15)
-        time.sleep(2)
-        pyautogui.hotkey('alt', 'tab')
-        if wait:
-            time.sleep(10)
+    pyautogui.hotkey('win', str(icon_num))
+    pyautogui.click(333, 563, clicks=3, interval=0.15)
+    time.sleep(2)
+    pyautogui.hotkey('alt', 'tab')
+    if wait:
+        time.sleep(10)
 
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
@@ -126,11 +125,11 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
-    # If there is a capcha, Beep and change server.
+    # If there is a capcha, Beep and sleep.
     capcha_elem = soup.select_one('div[id="px-captcha"]')
     if capcha_elem != None:
         winsound.Beep(440, 1000)        
-        click_random(icon_num)
+        time.sleep(30)
     
     # If it is a deleted account or there is a 404 error, return.
     deleted_elem = soup.select_one('div[class="center"]')
@@ -149,11 +148,12 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
             # Wait to scroll. Notify if unusually high number of scrolls (which may mean that
             # there is a 403 error).
-            if scroll_num % 50 == 0:
+            if scroll_num % 30 == 0:
                 winsound.Beep(440, 1000)
-                click_random(icon_num)
+                time.sleep(30)
 
-            time.sleep(random.uniform(1, 2))
+            if scroll_num >= 2:
+                time.sleep(random.uniform(2, 3))
 
             scroll_num += 1
 
@@ -314,7 +314,7 @@ def extract_creator_data(path, is_link=True):
     # Comments.
     comments = []
     if comment_soup != None:
-        comment_elems = comment_soup.select('li[class="flex flex-wrap page"] > ol > li')
+        comment_elems = comment_soup.select('li[class="page flex flex-wrap"] > ol > li')
         for comment_elem in comment_elems:
             comment_str = comment_elem.select_one('p[class="body"]').getText()
             link = "https://www.kickstarter.com" + comment_elem.select_one('a[class="read-more"]')['href']
@@ -354,8 +354,7 @@ def extract_write(creator_id):
 
     # Update deleted_creators.json in case of a deleted creator.
     if creator_datum == None:
-        deleted_creators.append(creator_id)
-        return
+        return creator_id
 
     # Write data to file.
     logging.info(f"Writing {creator_id} data to file...")
