@@ -244,10 +244,11 @@ def get_live_soup(link, scroll=False, given_driver=None):
             else:
                 break
 
+    soup = BeautifulSoup(driver.page_source, "lxml")
+
     if given_driver == None:
         driver.quit()
 
-    soup = BeautifulSoup(driver.page_source, "lxml")
     return soup
 
 def extract_elem_text(soup, selector):
