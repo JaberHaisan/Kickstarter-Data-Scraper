@@ -15,7 +15,7 @@ import pyautogui
 from bs4 import BeautifulSoup
 
 # Location of creator_ids.json
-CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids_0.json"
+CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids.json"
 # Output folder.
 OUTPUT_PATH = "Creator Output"
 # Chromedriver path
@@ -24,7 +24,7 @@ CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Ki
 icon_num = 5 
 
 # Number of processes per try.
-chunk_size = 3
+chunk_size = 10
 # Set logging.
 logging.getLogger('uc').setLevel(logging.ERROR)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -47,7 +47,8 @@ def main():
         creator_ids = json.load(f_obj)
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach"}
+    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach", "239309591",
+             "400294490"}
     
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
@@ -69,7 +70,7 @@ def main():
 
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
-        if total % 1 == 0:
+        if total % (chunk_size * 10) == 0:
             logging.info("Sleeping...\n")
             click_random(icon_num)
     
@@ -131,15 +132,14 @@ def get_live_soup(link, scroll=False, given_driver=None):
         winsound.Beep(440, 1000)        
         time.sleep(30)
     
-    # If it is a deleted account or there is a 404 error, return.
-    deleted_elem = soup.select_one('div[class="center"]')
-    non_existent_elem = soup.select_one('a[href="/?ref=404-ksr10"]')
-    if deleted_elem != None or non_existent_elem != None:
-        driver.quit()
-        return
-    
     if not scroll:
-        time.sleep(1)
+        # Counter for cloudflare protection.
+        if "about" in link:
+            time.sleep(5)
+            driver.refresh()
+            time.sleep(5)
+        else:
+            time.sleep(1)
     else:
         scroll_num = 1
         while True:
@@ -148,12 +148,12 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
             # Wait to scroll. Notify if unusually high number of scrolls (which may mean that
             # there is a 403 error).
-            if scroll_num % 30 == 0:
+            if scroll_num % 60 == 0:
                 winsound.Beep(440, 1000)
-                time.sleep(30)
+                time.sleep(15)
 
             if scroll_num >= 2:
-                time.sleep(random.uniform(2, 3))
+                time.sleep(random.uniform(1, 2))
 
             scroll_num += 1
 
@@ -167,6 +167,13 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
+    # If it is a deleted account or there is a 404 error, return.
+    deleted_elem = soup.select_one('div[class="center"]')
+    non_existent_elem = soup.select_one('a[href="/?ref=404-ksr10"]')
+    if deleted_elem != None or non_existent_elem != None:
+        driver.quit()
+        return
+    
     if given_driver == None:
         driver.quit()
 
