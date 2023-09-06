@@ -24,7 +24,7 @@ CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Ki
 icon_num = 5 
 
 # Number of processes per try.
-chunk_size = 10
+chunk_size = 8
 # Set logging.
 logging.getLogger('uc').setLevel(logging.ERROR)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -48,7 +48,7 @@ def main():
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
     later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach", "239309591",
-             "400294490"}
+             "400294490", "petersengames"}
     
     # Get already extracted creators and remove them from creator_ids.
     extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
@@ -133,13 +133,7 @@ def get_live_soup(link, scroll=False, given_driver=None):
         time.sleep(30)
     
     if not scroll:
-        # Counter for cloudflare protection.
-        if "about" in link:
-            time.sleep(5)
-            driver.refresh()
-            time.sleep(5)
-        else:
-            time.sleep(1)
+        time.sleep(1)
     else:
         scroll_num = 1
         while True:
@@ -148,9 +142,9 @@ def get_live_soup(link, scroll=False, given_driver=None):
 
             # Wait to scroll. Notify if unusually high number of scrolls (which may mean that
             # there is a 403 error).
-            if scroll_num % 60 == 0:
-                winsound.Beep(440, 1000)
-                time.sleep(15)
+            # if scroll_num % 60 == 0:
+            #     winsound.Beep(440, 1000)
+            #     time.sleep(15)
 
             if scroll_num >= 2:
                 time.sleep(random.uniform(1, 2))
@@ -301,7 +295,7 @@ def extract_creator_data(path, is_link=True):
     data['join_day'], data['join_month'], data['join_year'] = join_day, join_month, join_year
 
     # Location.
-    data['location'] = extract_elem_text(about_soup, 'span[class="location"] > a')
+    data['location'] = extract_elem_text(about_soup, 'span[class="location do-not-visually-track"] > a')
 
     # Biography.
     data['biography'] = extract_elem_text(about_soup, 'div[class="grid-col-12 grid-col-8-sm grid-col-6-md"]').strip()
