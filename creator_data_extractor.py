@@ -7,6 +7,7 @@ import logging
 import os
 import winsound
 import multiprocessing
+import sqlite3
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -16,8 +17,8 @@ from bs4 import BeautifulSoup
 
 # Location of creator_ids.json
 CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids.json"
-# Output folder.
-OUTPUT_PATH = "Creator Output"
+# Output file path.
+OUTPUT_PATH = r"D:"
 # Chromedriver path
 CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
 # Proton vpn windows taskbar location.
@@ -32,28 +33,27 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 pyautogui.PAUSE = 1
 pyautogui.FAILSAFE = True
 
-# Get deleted creators.
-deleted_creators = []
-if os.path.exists("deleted_creators.json"):
-    with open(f"deleted_creators.json", "r") as f_obj:
-        deleted_creators = json.load(f_obj)   
+# Lock to prevent multiple processes from trying to access database.
+db_lock = multiprocessing.Lock()
 
 def main():
-    # https://www.kickstarter.com/profile/dicedungeons/ # Lots of loading comments.
-    # https://www.kickstarter.com/profile/shiftcam # Backed projects are public.
-    # https://www.kickstarter.com/profile/mybirdbuddy/ # Multiple websites in about.
-
     with open(CREATOR_FILE_PATH, "r") as f_obj:
         creator_ids = json.load(f_obj)
     os.makedirs(OUTPUT_PATH, exist_ok=True)
 
+    # Get connection to database file.
+    con = create_creators_db(OUTPUT_PATH)
+    cur = con.cursor()
+
+    deleted = set(cid[0] for cid in cur.execute("SELECT creator_id FROM deleted_creators;"))
+    extracted_creators = set(cid[0] for cid in cur.execute("SELECT creator_id FROM creator;"))
+    aliases = set(cid[0] for cid in cur.execute("SELECT alias FROM creator_alias;"))
+    con.close()
+
     later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach", "239309591",
              "400294490", "petersengames"}
-    
-    # Get already extracted creators and remove them from creator_ids.
-    extracted_creators = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUT_PATH))
-    
-    skip = extracted_creators | later | set(deleted_creators)
+
+    skip = extracted_creators | later | deleted | aliases
     creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
 
     pool = multiprocessing.Pool()
@@ -61,12 +61,7 @@ def main():
     click_random(icon_num)
     total = 0
     for i in range(0, len(creator_ids), chunk_size):
-        res = pool.map(extract_write, creator_ids[i:i + chunk_size])
-        
-        if res:
-            deleted_creators.extend(res)
-            with open("deleted_creators.json", "w") as f_obj:
-                json.dump(deleted_creators, f_obj)
+        pool.map(extract_write, creator_ids[i:i + chunk_size])
 
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
@@ -76,6 +71,54 @@ def main():
     
     pool.close()
     pool.join()
+
+def create_creators_db(path):
+    """
+    Creates creators.db in path and returns a connection.
+    
+    path[str] - Location to save/load 'creators.db'
+    """
+    con = sqlite3.connect(os.path.join(path, "creators.db"))
+    cur = con.cursor()
+
+    # Table for creators data.
+    cur.execute("""CREATE TABLE IF NOT EXISTS creator(
+                url	TEXT,
+                creator_id	TEXT UNIQUE,
+                join_day INTEGER,	
+                join_month INTEGER,
+                join_year INTEGER,	
+                location TEXT,	
+                biography TEXT,	
+                num_backed INTEGER,	
+                num_created INTEGER,	
+                num_websites INTEGER,
+                has_facebook INTEGER,
+                has_twitter INTEGER,
+                has_instagram INTEGER,	
+                websites TEXT,	
+                comments_hidden	INTEGER,
+                num_comments INTEGER,	
+                comments TEXT, 	
+                created_projects TEXT,	
+                backed_projects TEXT
+                    )""")
+    
+    # Table for deleted creators.
+    cur.execute("""CREATE TABLE IF NOT EXISTS deleted_creators(
+                creator_id TEXT UNIQUE
+    )
+        """)
+
+    # Table for storing alternate creator ids.
+    cur.execute("""CREATE TABLE IF NOT EXISTS creator_alias(
+	            actual TEXT UNIQUE,
+	            alias TEXT
+    )          
+                """)
+
+    con.commit()
+    return con
 
 def click_random(icon_num, wait=True):
     """
@@ -346,22 +389,39 @@ def extract_creator_data(path, is_link=True):
             backed_projects.append(parse_data_project(backed_data_project))   
     data['backed_projects'] = backed_projects
 
+    # Serialize lists to make it possible to add them as TEXT type in sql table.
+    data['websites'] = json.dumps(data['websites'])
+    data['comments'] = json.dumps(data['comments'])
+    data['created_projects'] = json.dumps(data['created_projects'])
+    data['backed_projects'] = json.dumps(data['backed_projects'])
+    
     return data
 
 def extract_write(creator_id):
-    """Takes a creator_id, extracts data from pages and writes
-    the data as a json file to output_path"""
+    """Takes a creator_id, extracts data from pages and adds data to database."""
     logging.info(f"Started extracting {creator_id} data...")
     creator_datum = extract_creator_data(r"https://www.kickstarter.com/profile/" + creator_id)
 
-    # Update deleted_creators.json in case of a deleted creator.
-    if creator_datum == None:
-        return creator_id
+    with db_lock:
+        con = sqlite3.connect(os.path.join(OUTPUT_PATH, "creators.db"))
+        cur = con.cursor()
 
-    # Write data to file.
-    logging.info(f"Writing {creator_id} data to file...")
-    with open(os.path.join(OUTPUT_PATH, f"{creator_id}.json"), "w") as f_obj:
-        json.dump(creator_datum, f_obj)
+        # Add creator to deleted_creators table.
+        if creator_datum == None:
+            cur.execute("INSERT OR IGNORE INTO deleted_creators VALUES (?)", (creator_id,))
+            logging.info(f"Added {creator_id} to table...")
+        # Add data to creator table.
+        else:
+            cur.execute("INSERT OR IGNORE INTO creator VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(creator_datum.values()))
+
+            # Creator has alternate creator id.
+            if creator_id != creator_datum['creator_id']:
+                cur.execute("INSERT OR IGNORE INTO creator_alias VALUES (?, ?)", (creator_datum['creator_id'], creator_id))
+    
+            logging.info(f"Added {creator_id} to table...")
+        
+        con.commit()
+        con.close()
 
 if __name__ == "__main__":
     main()
