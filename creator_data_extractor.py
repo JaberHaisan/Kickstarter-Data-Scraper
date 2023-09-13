@@ -26,7 +26,7 @@ CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Ki
 icon_num = 5 
 
 # Number of processes per try.
-chunk_size = 8
+chunk_size = 10
 # Set logging.
 logging.getLogger('uc').setLevel(logging.ERROR)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -72,7 +72,7 @@ def main():
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
         if total % (chunk_size * 10) == 0:
-            logging.info("Sleeping...\n")
+            logging.info("Changing server...\n")
             click_random(icon_num)
     
     pool.close()
@@ -342,7 +342,10 @@ def extract_creator_data(path, is_link=True):
     join_day, join_month, join_year = "", "", ""
     join_date_elem = about_soup.select_one('span[class="joined"] > time')
     if join_date_elem != None:
-        join_date = datetime.strptime(join_date_elem['datetime'], '%Y-%m-%dT%H:%M:%S%z')
+        try:
+            join_date = datetime.strptime(join_date_elem['datetime'], '%Y-%m-%dT%H:%M:%S%z')
+        except ValueError:
+            join_date = datetime.strptime(join_date_elem['datetime'], '%Y-%m-%d')
         join_day, join_month, join_year = join_date.day, join_date.month, join_date.year
         
     data['join_day'], data['join_month'], data['join_year'] = join_day, join_month, join_year
