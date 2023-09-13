@@ -8,6 +8,7 @@ import os
 import winsound
 import multiprocessing
 import sqlite3
+import traceback
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -16,7 +17,7 @@ import pyautogui
 from bs4 import BeautifulSoup
 
 # Location of creator_ids.json
-CREATOR_FILE_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\Output\creator_ids.json"
+CREATOR_FILE_PATH = r"D:\remaining_creator_ids_0.json"
 # Output file path.
 OUTPUT_PATH = r"D:"
 # Chromedriver path
@@ -50,10 +51,7 @@ def main():
     aliases = set(cid[0] for cid in cur.execute("SELECT alias FROM creator_alias;"))
     con.close()
 
-    later = {"thirdwayind", "dwarvenforge", "peak-design", "350683997", "152730994", "geniusgames", "1906838062", "tedalspach", "239309591",
-             "400294490", "petersengames"}
-
-    skip = extracted_creators | later | deleted | aliases
+    skip = extracted_creators | deleted | aliases
     creator_ids = [creator_id for creator_id in creator_ids if creator_id not in skip]
 
     pool = multiprocessing.Pool()
@@ -61,8 +59,16 @@ def main():
     click_random(icon_num)
     total = 0
     for i in range(0, len(creator_ids), chunk_size):
-        pool.map(extract_write, creator_ids[i:i + chunk_size])
-
+        while True:
+            try:
+                pool.map(extract_write, creator_ids[i:i + chunk_size])
+            except Exception:
+                logging.info(f"\nException -\n {traceback.format_exc()} \nRetrying...")
+                click_random(icon_num)
+                time.sleep(10)
+            else:
+                break      
+            
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
         if total % (chunk_size * 10) == 0:
@@ -272,42 +278,46 @@ def extract_creator_data(path, is_link=True):
     data = {}
 
     if is_link:
-        driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
-        # Extract data from available pages.
-        about_soup = get_live_soup(path + "/about", given_driver=driver)
+        try:
+            driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
+            # Extract data from available pages.
+            about_soup = get_live_soup(path + "/about", given_driver=driver)
 
-        if about_soup == None:
-            return 
-        
-        # There may be multiple pages for created projects.
-        created_soup = get_live_soup(path + "/created", given_driver=driver)
-        created_soups = [created_soup]
-        while True:
-            next_elem = created_soup.select_one('a[rel="next"]')
-
-            # No further pages.
-            if next_elem == None:
-                break   
+            if about_soup == None:
+                return 
             
-            created_soup = get_live_soup("https://www.kickstarter.com/" + next_elem['href'], given_driver=driver)
-            created_soups.append(created_soup)
+            # There may be multiple pages for created projects.
+            created_soup = get_live_soup(path + "/created", given_driver=driver)
+            created_soups = [created_soup]
+            while True:
+                next_elem = created_soup.select_one('a[rel="next"]')
 
-        # Do not try to scrap pages if they are not public.
-        if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
-            comment_soup = get_live_soup(path + "/comments", True, driver)
-        else:
+                # No further pages.
+                if next_elem == None:
+                    break   
+                
+                created_soup = get_live_soup("https://www.kickstarter.com/" + next_elem['href'], given_driver=driver)
+                created_soups.append(created_soup)
+
+            # Do not try to scrap pages if they are not public. 
             comment_soup = None
+            # if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-comments-link"]') != None:
+            #     comment_soup = get_live_soup(path + "/comments", True, driver)
+            # else:
+            #     comment_soup = None
 
-        # Number of projects backed.
-        backed = extract_elem_text(about_soup, 'span[class="backed"]')
-        backed = get_digits(backed, "int")
+            # Number of projects backed.
+            backed = extract_elem_text(about_soup, 'span[class="backed"]')
+            backed = get_digits(backed, "int")
 
-        if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None and backed != 0:
-            backed_soup = get_live_soup(path, True, driver)
-        else:
-            backed_soup = None
-        
-        driver.quit()
+            if about_soup.select_one('a[class="nav--subnav__item__link nav--subnav__item__link--gray js-backed-link"]') != None and backed != 0:
+                backed_soup = get_live_soup(path, True, driver)
+            else:
+                backed_soup = None
+        except Exception:
+            raise Exception
+        finally:
+            driver.quit()
     else:
         with open(path + " — About.html", encoding='utf8', errors="backslashreplace") as infile:
             about_soup = BeautifulSoup(infile, "lxml")
