@@ -23,6 +23,7 @@ import pandas as pd
 DATA_PATH = r"D:\scraping_projects.csv"
 # Output path.
 OUTPUT_PATH = r"D:\\"
+DATABASE = os.path.join(OUTPUT_PATH, "new_projects.db")
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 # Set what value to enter in case of missing data. Default is ""
@@ -35,26 +36,66 @@ chunk_size = 10
 icon_num = 5 
 
 # Script.
-
 def main():
     pool = multiprocessing.Pool()
 
     # Get projects to scrape.
-    with open(DATA_PATH, encoding="utf8", newline='') as f_obj:
-        reader = csv.DictReader(f_obj)
-    
-    # Get connection to database file.
-    con = create_new_projects_db(OUTPUT_PATH)
-    cur = con.cursor()
+    f_obj = open(DATA_PATH, encoding="utf8", newline='')
+    reader = csv.DictReader(f_obj)
 
-    # Get chunk_size number rows as a list per iteration.
-    for rows in [row for _, row in zip(range(chunk_size), reader)]:
-        pass
+    total = 0
+    Done = False
+    while not Done:
+        # Get at maximum chunk_size number rows as a list per iteration.
+        rows = get_rows(reader, DATABASE, chunk_size)
 
+        # Scraping complete since there aren't enough rows left to reach chunk_size.
+        if len(rows) < chunk_size:
+            Done = True
+        if len(rows) == 0:
+            continue
+
+        # Stop scraping for a period of time to not be blocked as a bot.
+        total += chunk_size
+        if total % (chunk_size * 10) == 0:
+            logging.info("Changing server...\n")
+            # click_random(icon_num)
+
+    f_obj.close()
     pool.close()
     pool.join()
 
     # logging.info("Writing data to file...")
+
+def test_extract_campaign_data():
+    # Testing code.
+    file_paths = ["https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students"]
+    data = [extract_campaign_data(file_path) for file_path in file_paths]
+    df = pd.DataFrame(data)
+    df.to_csv('test.csv', index = False)
+
+def get_rows(reader, database, n_rows):
+    """Returns n rows from csv reader while making sure they weren't already scraped by checking in database."""
+    rows = []
+    # Get already scraped urls.
+    con = create_new_projects_db(database)
+    cur = con.cursor()
+    scraped_urls = set(url[0] for url in cur.execute("SELECT rd_project_link FROM projects;"))
+    con.close()
+    
+    # Get n rows which haven't been scraped if there are enough remaining rows.
+    while len(rows) != n_rows:
+        try:
+            row = next(reader)
+        except StopIteration:
+            break
+
+        if row['url'] in scraped_urls:
+            continue
+        else:
+            rows.append(row)
+    
+    return rows
 
 def click_random(icon_num, wait=True):
     """
@@ -72,13 +113,13 @@ def click_random(icon_num, wait=True):
     if wait:
         time.sleep(10)
 
-def create_new_projects_db(path):
+def create_new_projects_db(database):
     """
-    Creates new_projects.db in path and returns a connection.
+    Creates database if it doesn't exist and returns a connection.
     
-    path[str] - Location to save/load 'new_projects.db'
+    path[str] - Location to save/load database
     """
-    con = sqlite3.connect(os.path.join(path, "new_projects.db"))
+    con = sqlite3.connect(database)
     cur = con.cursor()
 
     # Table for projects data.
@@ -147,13 +188,6 @@ def create_new_projects_db(path):
 
     con.commit()
     return con
-
-def test_extract_campaign_data():
-    # Testing code.
-    file_paths = ["https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students"]
-    data = [extract_campaign_data(file_path) for file_path in file_paths]
-    df = pd.DataFrame(data)
-    df.to_csv('test.csv', index = False)
 
 def get_str(string, extra):
     """Returns a string without any digits.
@@ -429,6 +463,11 @@ def extract_campaign_data(path):
     data["cv_startmonth"] = MISSING
     data["cv_startyear"] = MISSING
 
+    # Campaign end time.
+    data["cv_endday"] = MISSING
+    data["cv_endmonth"] = MISSING
+    data["cv_endyear"] = MISSING
+
     # Number of images and photos.
     photos, videos = 0, 0
     # Get number of photos and videos in highlight.
@@ -531,8 +570,5 @@ def extract_campaign_data(path):
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     # test_extract_campaign_data()
-    pass
-
-renamed_columns = {"endday": "cv_endday", "endmonth": "cv_endmonth", "endyear": "cv_endyear",}
