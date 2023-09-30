@@ -6,37 +6,147 @@ import time
 import json
 import winsound
 import random
+import sqlite3
+import os
+import csv
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 
+import pyautogui
 from bs4 import BeautifulSoup
 import pandas as pd
 
 # Settings.
 
-# Path to data. Make sure to use raw strings or escape "\".
-DATA_PATH = r"F:\Kickstarter Zips\Unzipped"
+# Path to project data. Make sure to use raw strings or escape "\".
+DATA_PATH = r"D:\scraping_projects.csv"
+# Output path.
+OUTPUT_PATH = r"D:\\"
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 # Chromedriver path
 CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
+# Number of processes per try.
+chunk_size = 10
+# Proton vpn windows taskbar location.
+icon_num = 5 
 
 # Script.
 
 def main():
-    campaign_data = []
-    update_data = {}
     pool = multiprocessing.Pool()
+
+    # Get projects to scrape.
+    with open(DATA_PATH, encoding="utf8", newline='') as f_obj:
+        reader = csv.DictReader(f_obj)
+    
+    # Get connection to database file.
+    con = create_new_projects_db(OUTPUT_PATH)
+    cur = con.cursor()
+
+    # Get chunk_size number rows as a list per iteration.
+    for rows in [row for _, row in zip(range(chunk_size), reader)]:
+        pass
 
     pool.close()
     pool.join()
 
-    logging.info("Writing data to file...")
+    # logging.info("Writing data to file...")
 
-    output_folder = "Output"
+def click_random(icon_num, wait=True):
+    """
+    Clicks random button in proton vpn. Proton VPN needs
+    to be open on the profiles page. 
+    
+    icon_num [int] - Index of proton vpn icon on the windows taskbar.
+    wait [bool] - If True, function will sleep for 10s to make sure Proton Vpn
+    connects and otherwise it will not sleep. True by default.
+    """
+    pyautogui.hotkey('win', str(icon_num))
+    pyautogui.click(333, 563, clicks=3, interval=0.15)
+    time.sleep(2)
+    pyautogui.hotkey('alt', 'tab')
+    if wait:
+        time.sleep(10)
+
+def create_new_projects_db(path):
+    """
+    Creates new_projects.db in path and returns a connection.
+    
+    path[str] - Location to save/load 'new_projects.db'
+    """
+    con = sqlite3.connect(os.path.join(path, "new_projects.db"))
+    cur = con.cursor()
+
+    # Table for projects data.
+    table_creation_sql = """
+    CREATE TABLE IF NOT EXISTS projects (
+        time_interval TEXT, 
+        date_accessed TEXT, 
+        rd_project_link TEXT, 
+        project_id TEXT, 
+        creator_id TEXT, 
+        title TEXT, 
+        rd_creator_name TEXT, 
+        blurb TEXT, 
+        verified_identity TEXT, 
+        status TEXT, 
+        cv_duration TEXT, 
+        cv_num_backers TEXT, 
+        collaborators TEXT, 
+        original_curr_symbol TEXT, 
+        converted_curr_symbol TEXT, 
+        conversion_rate FLOAT, 
+        goal FLOAT, 
+        converted_goal FLOAT, 
+        pledged FLOAT, 
+        converted_pledged FLOAT, 
+        cv_startday TEXT, 
+        cv_startmonth TEXT, 
+        cv_startyear TEXT, 
+        cv_endday BIGINT, 
+        cv_endmonth BIGINT, 
+        cv_endyear BIGINT, 
+        num_photos BIGINT, 
+        num_videos BIGINT, 
+        pwl FLOAT, 
+        make100 TEXT, 
+        category TEXT, 
+        subcategory TEXT, 
+        location TEXT, 
+        rd_creator_created TEXT, 
+        num_backed TEXT, 
+        rd_comments BIGINT, 
+        rd_updates BIGINT, 
+        rd_faqs BIGINT, 
+        description TEXT, 
+        risk TEXT, 
+        cv_num_rewards BIGINT,
+        """
+
+    # Add columns for pledges.
+    max_pledge_num = 126
+    for i in range(0, max_pledge_num + 1):
+        table_creation_sql += f"""rd_id_{i} TEXT, 
+                                rd_title_{i} TEXT, 
+                                rd_price_{i} TEXT, 
+                                rd_desc_{i} TEXT, 
+                                rd_list_{i} TEXT, 
+                                rd_delivery_date_{i} TEXT, 
+                                rd_shipping_location_{i} TEXT, 
+                                rd_backers_{i} TEXT, 
+                                rd_limit_{i} TEXT, 
+                                rd_gone_{i} TEXT,"""
+
+    # Replace last "," to prevent sql error and also close command.
+    table_creation_sql = table_creation_sql[:-1] + "\n)"
+    cur.execute(table_creation_sql)
+
+    con.commit()
+    return con
 
 def test_extract_campaign_data():
     # Testing code.
@@ -217,7 +327,7 @@ def extract_campaign_data(path):
     Inputs:
     path [str] - Path to html file.
     is_link [boolean] - True if path is a link and False otherwise. False by default."""
-    data = {"url": path}
+    data = {"rd_project_link": path}
     
     driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
     campaign_soup = get_live_soup(path, given_driver=driver)
@@ -235,29 +345,28 @@ def extract_campaign_data(path):
     date, time = date_time_str.split("-")
 
     data["date_accessed"] = date
-    data["time_accessed"] = time
 
-    # Url. If missing, do not continue.
+    # rd_project_link. If missing, do not continue.
     try:
-        url_elem = campaign_soup.select_one('meta[property="og:url"]')
-        data["url"] = url_elem["content"]
+        rd_project_link_elem = campaign_soup.select_one('meta[property="og:rd_project_link"]')
+        data["rd_project_link"] = rd_project_link_elem["content"]
     except:
         return data
 
     # Project Id and Creator Id.
-    creator_id, project_id = data["url"].split("/")[-2:]
+    creator_id, project_id = data["rd_project_link"].split("/")[-2:]
     data["project_id"] = project_id
     data["creator_id"] = creator_id
 
     # Creator, Title and Blurb
     meta_elem = campaign_soup.select_one('meta[name="description"]')
     lines = meta_elem["content"].splitlines()
-    creator, title = lines[0].split(" is raising funds for ")
+    rd_creator_name, title = lines[0].split(" is raising funds for ")
     title = title.strip().replace(" on Kickstarter!", "")
     blurb = lines[-1].strip()
 
     data["title"] = title
-    data["creator"] = creator
+    data["rd_creator_name"] = rd_creator_name
     data["blurb"] = blurb 
 
     # data-initial attribute has a lot of the required data elements
@@ -276,7 +385,6 @@ def extract_campaign_data(path):
     # Status of campaign.
     status = MISSING
 
-
     # Status strings. prj.db
     successful = "Successful"
     failed = "Failed"
@@ -287,9 +395,9 @@ def extract_campaign_data(path):
     data["status"] = status
 
     # Backers. prj.db
-    backers = MISSING
+    cv_num_backers = MISSING
 
-    data["backers"] = backers
+    data["cv_num_backers"] = cv_num_backers
 
     # Collaborators. Empty list if no collaborators and
     # empty string if it was not possible to extract.
@@ -297,7 +405,7 @@ def extract_campaign_data(path):
     if project_data:
         collab_list = project_data['collaborators']['edges']
         for collab in collab_list:
-            collaborators.append((collab['node']['name'], collab['node']['url'], collab['title']))
+            collaborators.append((collab['node']['name'], collab['node']['rd_project_link'], collab['title']))
     else:
         collaborators = ""
     data["collaborators"] = collaborators
@@ -316,11 +424,10 @@ def extract_campaign_data(path):
     data["pledged"] = pledged
     data["converted_pledged"] = converted_pledged
 
-    # Campaign start time. Will be extracted from updates files
-    # so just leave space for it to be added later. prj.db
-    data["startday"] = MISSING
-    data["startmonth"] = MISSING
-    data["startyear"] = MISSING
+    # Campaign start time.
+    data["cv_startday"] = MISSING
+    data["cv_startmonth"] = MISSING
+    data["cv_startyear"] = MISSING
 
     # Number of images and photos.
     photos, videos = 0, 0
@@ -356,14 +463,14 @@ def extract_campaign_data(path):
     data["location"] = location
 
     # Number of projects created.
-    num_projects = MISSING
+    rd_creator_created = MISSING
     if project_data and project_data['creator']:
             if 'createdProjects' in project_data['creator']:
-                num_projects = project_data['creator']['createdProjects']['totalCount']
+                rd_creator_created = project_data['creator']['createdProjects']['totalCount']
             else:
-                num_projects = project_data['creator']['launchedProjects']['totalCount']
+                rd_creator_created = project_data['creator']['launchedProjects']['totalCount']
 
-    data["num_projects"] = num_projects
+    data["rd_creator_created"] = rd_creator_created
 
     # Number of projects backed.
     num_backed = MISSING
@@ -378,19 +485,19 @@ def extract_campaign_data(path):
 
     # Number of comments.
     comments_elem = campaign_soup.select_one('data[itemprop="Project[comments_count]"]')
-    data["num_comments"] = comments_elem.getText()
+    data["rd_comments"] = comments_elem.getText()
     
     # Number of updates.
     updates_elem = campaign_soup.select_one('a[data-content="updates"] > span[class="count"]')
-    data["num_updates"] = updates_elem.getText()
+    data["rd_updates"] = updates_elem.getText()
 
     # Number of faq.
     faq_elem = campaign_soup.select_one('a[data-content="faqs"]')
     # Kickstarter does not show 0 if there is no faq.
     if len(faq_elem.contents) > 1:
-        data["num_faq"] = faq_elem.contents[1].getText()
+        data["rd_faqs"] = faq_elem.contents[1].getText()
     else:
-        data["num_faq"] = 0
+        data["rd_faqs"] = 0
 
     # Description.
     description_elem = campaign_soup.select_one('div[class="full-description js-full-description responsive-media formatted-lists"]')
@@ -415,13 +522,17 @@ def extract_campaign_data(path):
     all_pledge_elems = []
     all_pledge_elems.extend([pledge_elem for pledge_elem in reward_soup.select('article[data-test-id]')])
 
-    data["num_rewards"] = len(all_pledge_elems)
+    data["cv_num_rewards"] = len(all_pledge_elems)
 
     for i, pledge_elem in enumerate(all_pledge_elems):
         data |= get_pledge_data(pledge_elem, i)
 
     return data
 
+
 if __name__ == "__main__":
     # main()
-    test_extract_campaign_data()
+    # test_extract_campaign_data()
+    pass
+
+renamed_columns = {"endday": "cv_endday", "endmonth": "cv_endmonth", "endyear": "cv_endyear",}
