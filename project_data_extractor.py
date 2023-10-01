@@ -77,7 +77,8 @@ def main():
 def test_extract_campaign_data():
     # Testing code.
     file_paths = [#"https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students", 
-                  "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition",]
+                  "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition",
+                  "https://www.kickstarter.com/projects/lucid-dreamers/empires-of-sorcery",]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
     df.to_csv('test.csv', index = False)
@@ -214,10 +215,15 @@ def get_digits(string, conv="float"):
     conv[str] - Enter "float" if you need float. Otherwise will provide integer."""
     if conv == "float":
         res = re.findall(r'[0-9.]+', string)
-        return float("".join(res))
+        converter = float
     else:
         res = re.findall(r'\d+', string)
-        return int("".join(res))
+        converter = int
+    
+    if res != []:
+        return converter("".join(res))
+    else:
+        return None
 
 def get_pledge_data(bs4_tag, index=0):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
@@ -326,18 +332,29 @@ def get_category_data(cat_str):
     
     return (category, subcategory)
 
-def get_live_soup(link, given_driver=None):
+def get_live_soup(link, given_driver=None, page=None):
     """Returns a bs4 soup object of the given link. Returns None if it is a deleted kickstarter account.
     
     link [str] - A link to a website.
     scroll [bool] - True if you want selenium to keep scrolling down till loading no longer happens.
     False by default.
-    given_driver [selenium webdriver] - A webdriver. None by default."""
+    given_driver [selenium webdriver] - A webdriver. None by default.
+    page [str] - Additional behavior depending on page type."""
     if given_driver == None:
         driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
     else:
         driver = given_driver
     driver.get(link)
+
+    # Click creator page for page to load additional data if it is a campaign page.
+    # There are two possible alternate selectors. One for successful campaigns and the
+    # other for other campaigns. Try finding both and click whichever that exists.
+    elems = []
+    if page == "campaign":
+            elems.extend(driver.find_elements(By.CSS_SELECTOR, 'a[data-modal-title="About the creator"]'))
+            elems.extend(driver.find_elements(By.CSS_SELECTOR, 'div[class="do-not-visually-track text-left type-16 bold clip text-ellipsis"]'))
+            if len(elems) > 0:
+                elems[0].click()        
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
@@ -372,7 +389,7 @@ def extract_campaign_data(path):
     data = {"rd_project_link": path}
     
     driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
-    campaign_soup = get_live_soup(path, given_driver=driver)
+    campaign_soup = get_live_soup(path, given_driver=driver, page="campaign")
     reward_soup = get_live_soup(path + "/rewards", given_driver=driver)
     driver.quit()
 
@@ -419,9 +436,11 @@ def extract_campaign_data(path):
         project_data = json.loads(project_data_elem['data-initial']).get('project', None)  
 
     # Creator verified identity.
-    verified_identity = MISSING
     if project_data:
         verified_identity = project_data['verifiedIdentity']
+    else:
+        verified_identity_elem = campaign_soup.select_one('span[class="identity_name"]')
+        verified_identity = verified_identity_elem.getText() if verified_identity_elem != None else MISSING
     data['verified_identity'] = verified_identity  
 
     # Status of campaign.
@@ -468,20 +487,23 @@ def extract_campaign_data(path):
 
     # Number of images and photos.
     photos, videos = 0, 0
-    # Get number of photos and videos in highlight.
-    highlight_elem = campaign_soup.select_one('div[class="grid-row grid-row mb5-lg mb0-md order-0-md order-2-lg"]')
-    if highlight_elem != None:
-        photos += len(highlight_elem.select("img"))
-        # Check either possible tag for video in highlight.
-        videos += len(highlight_elem.select('svg[class="svg-icon__icon--play icon-20 fill-white"]')) or len(highlight_elem.select("video"))
-    # Get number of photos and videos in description.
-    description_container_elem = campaign_soup.select_one('div[class="col col-8 description-container"]')
-    if description_container_elem != None:
-        photos += len(description_container_elem.select("img"))
+    # Get number of photos and videos within all content. Do not try to get
+    # all photos for all content because there are campaign unrelated photos within 
+    # this elem.
+    content_elem = campaign_soup.select_one('div[id="content-wrap"]')
+    description_elem = campaign_soup.select_one('div[class="story-content"]')
+    if content_elem != None:
+        # Front video.
+        videos += len(content_elem.select('video[preload="none"]'))
+        # Embedded videos.
+        videos += len(content_elem.select('div[class="embedly-card-hug"]'))
+        # Front image.
+        photos += len(content_elem.select('img[class="js-feature-image"]'))
+    
+    if description_elem != None:
+        # Images in description.
+        photos += len(description_elem.select('img'))
 
-        videos += len(description_container_elem.select("video"))
-        videos += len(description_container_elem.select('div[class="template oembed"]'))
-        
     data["num_photos"] = photos
     data["num_videos"] = videos
 
@@ -501,6 +523,18 @@ def extract_campaign_data(path):
             else:
                 rd_creator_created = project_data['creator']['launchedProjects']['totalCount']
 
+    if not project_data:
+        # This elem contains information about both created and backed projects by creator.
+        created_backed_elem = campaign_soup.select_one('[class="created-projects py2 f5 mb3"]')
+        if created_backed_elem != None:
+            created_text, backed_text = created_backed_elem.getText().replace('\n', '').split('·')
+            digits = get_digits(created_text, "int")
+            if digits != None:
+                rd_creator_created = digits
+            else:
+                # If not digits, then this project must be "First Created"
+                rd_creator_created = 1
+    
     data["rd_creator_created"] = rd_creator_created
 
     # Number of projects backed.
@@ -511,6 +545,11 @@ def extract_campaign_data(path):
                 num_backed = project_data['creator']['backedProjects']['totalCount']
         else:
             num_backed = project_data['creator']['backingsCount']
+
+    if not project_data:
+            digits = get_digits(backed_text, "int")
+            if digits != None:
+                num_backed = digits
 
     data["num_backed"] = num_backed 
 
@@ -536,7 +575,6 @@ def extract_campaign_data(path):
         data["rd_faqs"] = MISSING
 
     # Description.
-    description_elem = campaign_soup.select_one('div[class="story-content"]')
     if description_elem != None:
         description = description_elem.getText().strip()
     else:
