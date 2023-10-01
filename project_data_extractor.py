@@ -24,18 +24,25 @@ DATA_PATH = r"D:\scraping_projects.csv"
 # Output path.
 OUTPUT_PATH = r"D:\\"
 DATABASE = os.path.join(OUTPUT_PATH, "new_projects.db")
+# Chromedriver path
+CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
+
 # Set logging.
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO, datefmt='%m/%d/%Y %I:%M:%S %p')
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
-# Chromedriver path
-CHROMEDRIVER_PATH = r"C:\Users\jaber\OneDrive\Desktop\Research_JaberChowdhury\Kickstarter-Data-Scraper\chromedriver.exe"
+# Set to True if Testing and False otherwise.
+TESTING = 1
 # Number of processes per try.
 chunk_size = 10
 # Proton vpn windows taskbar location.
 icon_num = 5 
 
 # Script.
+
+# Lock to prevent multiple processes from trying to access database.
+db_lock = multiprocessing.Lock()
+
 def main():
     pool = multiprocessing.Pool()
 
@@ -69,7 +76,8 @@ def main():
 
 def test_extract_campaign_data():
     # Testing code.
-    file_paths = ["https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students"]
+    file_paths = [#"https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students", 
+                  "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition",]
     data = [extract_campaign_data(file_path) for file_path in file_paths]
     df = pd.DataFrame(data)
     df.to_csv('test.csv', index = False)
@@ -382,7 +390,7 @@ def extract_campaign_data(path):
 
     # rd_project_link. If missing, do not continue.
     try:
-        rd_project_link_elem = campaign_soup.select_one('meta[property="og:rd_project_link"]')
+        rd_project_link_elem = campaign_soup.select_one('meta[property="og:url"]')
         data["rd_project_link"] = rd_project_link_elem["content"]
     except:
         return data
@@ -417,21 +425,11 @@ def extract_campaign_data(path):
     data['verified_identity'] = verified_identity  
 
     # Status of campaign.
-    status = MISSING
+    data["status"] = MISSING
+    data["cv_duration"] = MISSING
 
-    # Status strings. prj.db
-    successful = "Successful"
-    failed = "Failed"
-    canceled = "Canceled"
-    suspended = "Suspended"
-    live = "Live"
-
-    data["status"] = status
-
-    # Backers. prj.db
-    cv_num_backers = MISSING
-
-    data["cv_num_backers"] = cv_num_backers
+    # Backers.
+    data["cv_num_backers"] = MISSING
 
     # Collaborators. Empty list if no collaborators and
     # empty string if it was not possible to extract.
@@ -489,17 +487,11 @@ def extract_campaign_data(path):
 
     # Make 100 (make100), Projects we love (pwl), Category, Location. make100/pwl is 1 if project is 
     # part of it and otherwise 0. prj.db
-    pwl = MISSING    
-    make100 = MISSING
-    category = MISSING
-    subcategory = MISSING
-    location = MISSING
-
-    data["pwl"] = pwl
-    data["make100"] = make100
-    data["category"] = category
-    data["subcategory"] = subcategory
-    data["location"] = location
+    data["pwl"] = MISSING
+    data["make100"] = MISSING
+    data["category"] = MISSING
+    data["subcategory"] = MISSING
+    data["location"] = MISSING
 
     # Number of projects created.
     rd_creator_created = MISSING
@@ -527,16 +519,15 @@ def extract_campaign_data(path):
     data["rd_comments"] = comments_elem.getText()
     
     # Number of updates.
-    updates_elem = campaign_soup.select_one('a[data-content="updates"] > span[class="count"]')
+    updates_elem = campaign_soup.select_one('a[data-analytics="updates"] > span[class="count"]')
     data["rd_updates"] = updates_elem.getText()
 
     # Number of faq.
-    faq_elem = campaign_soup.select_one('a[data-content="faqs"]')
-    # Kickstarter does not show 0 if there is no faq.
-    if len(faq_elem.contents) > 1:
-        data["rd_faqs"] = faq_elem.contents[1].getText()
+    faq_elem = campaign_soup.select_one("a[id='faq-emoji']")
+    if faq_elem != None:
+        data["rd_faqs"] = faq_elem["emoji-data"]
     else:
-        data["rd_faqs"] = 0
+        data["rd_faqs"] = MISSING
 
     # Description.
     description_elem = campaign_soup.select_one('div[class="full-description js-full-description responsive-media formatted-lists"]')
@@ -566,9 +557,64 @@ def extract_campaign_data(path):
     for i, pledge_elem in enumerate(all_pledge_elems):
         data |= get_pledge_data(pledge_elem, i)
 
+    print(data)
     return data
 
+def scrape_write(row):
+    """Takes a row of data, scrapes additional data from url and adds full data to database."""
+    logging.info(f"Started scraping {row['url']}...")
+    project_data = extract_campaign_data(row["url"])
+
+    # Merge data.
+    start_date = datetime.strptime(row["created_date"], "%Y-%m-%d")
+    end_date = datetime.strptime(row["deadline_date"], "%Y-%m-%d")
+    duration = (end_date - start_date).days
+
+    project_data["time_interval"] = duration
+    project_data["cv_startday"] = start_date.day
+    project_data["cv_startmonth"] = start_date.month
+    project_data["cv_startyear"] = start_date.year
+    project_data["cv_endday"] = end_date.day
+    project_data["cv_endmonth"] = end_date.month
+    project_data["cv_endyear"] = end_date.year
+    project_data["cv_duration"] = duration
+
+    project_data["status"] = row["state"]
+    project_data["original_curr_symbol"] = row["original_currency"]
+    project_data["converted_curr_symbol"] = row["converted_currency"]   
+    project_data["conversion_rate"] = row["conversion_rate"]
+    project_data["goal"] = float(row["goal"]) / row["conversion_rate"]
+    project_data["converted_goal"] = row["goal"]
+    project_data["pledged"] = float(row["pledged"]) / row["conversion_rate"]
+    project_data["converted_pledged"] = row["pledged"]
+
+    project_data["pwl"] = row["pwl"]
+    project_data["make100"] = MISSING
+    project_data["category"] = row["category"]
+    project_data["subcategory"] = row["subcategory"]
+    project_data["location"] = row["location"]
+
+    print(project_data)
+    with db_lock:
+        con = create_new_projects_db(DATABASE)
+        cur = con.cursor()
+
+        columns = ', '.join(project_data.keys())
+        placeholders = ', '.join('?' * len(project_data))
+        insert_command = "INSERT INTO projects ({}) VALUES ({})".format(columns, placeholders)
+        cur.execute(insert_command, tuple(project_data.values()))
+        logging.info(f"Added {row['url']} to table...")
+        
+        con.commit()
+        con.close()
 
 if __name__ == "__main__":
-    main()
-    # test_extract_campaign_data()
+    if not TESTING:
+        main()
+    else:
+        test_extract_campaign_data()
+
+# row = {"name": "Pokeballoons: Evolution Edition!", "url": "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition", "creator_id": 1000473597, "blurb": "A new addition to the Pokeballoons series featuring your favorite evolutions. Gotta collect 'em all!", "original_currency": "USD", "converted_currency": "USD", "conversion_rate": 1.0, 
+#        "goal": 100.0, "pledged": "1304.0", "backers": 26, "state": "Successful", "pwl": 0, "location": "Dallas, TX", "subcategory": "Illustration", "category": "Art", "created_date": "2023-03-13", "launched_date": "2023-03-18", "deadline_date": "2023-04-07"}
+
+# scrape_write(row)
