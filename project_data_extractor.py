@@ -515,12 +515,18 @@ def extract_campaign_data(path):
     data["num_backed"] = num_backed 
 
     # Number of comments.
-    comments_elem = campaign_soup.select_one('data[itemprop="Project[comments_count]"]')
-    data["rd_comments"] = comments_elem.getText()
+    comments_elem = campaign_soup.select_one("a[id='comments-emoji']")
+    if comments_elem != None:
+        data["rd_comments"] = comments_elem["data-comments-count"]
+    else:
+        data["rd_comments"] = MISSING
     
     # Number of updates.
-    updates_elem = campaign_soup.select_one('a[data-analytics="updates"] > span[class="count"]')
-    data["rd_updates"] = updates_elem.getText()
+    updates_elem = campaign_soup.select_one("a[id='updates-emoji']")
+    if updates_elem != None:
+        data["rd_updates"] = updates_elem["emoji-data"]
+    else:
+        data["rd_updates"] = MISSING
 
     # Number of faq.
     faq_elem = campaign_soup.select_one("a[id='faq-emoji']")
@@ -530,7 +536,7 @@ def extract_campaign_data(path):
         data["rd_faqs"] = MISSING
 
     # Description.
-    description_elem = campaign_soup.select_one('div[class="full-description js-full-description responsive-media formatted-lists"]')
+    description_elem = campaign_soup.select_one('div[class="story-content"]')
     if description_elem != None:
         description = description_elem.getText().strip()
     else:
@@ -538,12 +544,9 @@ def extract_campaign_data(path):
     data["description"] = description
     
     # Risks.
-    risk_elem = campaign_soup.select_one('div[class="mb3 mb10-sm mb3 js-risks"]')
+    risk_elem = campaign_soup.select_one('p[class="js-risks-text text-preline"]')
     if risk_elem != None:
         risk = risk_elem.getText().strip()
-        # Remove first line "Risks and challenges" and last line "Learn about accountability on Kickstarter"
-        # because they are the same for all projects.
-        risk = "".join(risk.splitlines(keepends=True)[1:-1])
     else:
         risk = MISSING
     data["risk"] = risk
@@ -557,7 +560,6 @@ def extract_campaign_data(path):
     for i, pledge_elem in enumerate(all_pledge_elems):
         data |= get_pledge_data(pledge_elem, i)
 
-    print(data)
     return data
 
 def scrape_write(row):
