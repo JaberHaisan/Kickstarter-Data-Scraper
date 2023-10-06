@@ -89,6 +89,7 @@ def test_extract_campaign_data():
                   "https://www.kickstarter.com/projects/ogglio/2023-olive-oil-harvest/",
                   "https://www.kickstarter.com/projects/artorder/2018-snowman-greeting-card-collection/",
                   ]
+
     pool = multiprocessing.Pool()
     data = pool.map(extract_campaign_data, file_paths)
     pool.close()
