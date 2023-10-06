@@ -11,8 +11,10 @@ import os
 import csv
 
 import undetected_chromedriver as uc
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-
 import pyautogui
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -32,7 +34,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 # Set what value to enter in case of missing data. Default is ""
 MISSING = ""
 # Set to True if Testing and False otherwise.
-TESTING = 1
+TESTING = 0
 # Number of processes per try.
 chunk_size = 10
 # Proton vpn windows taskbar location.
@@ -45,6 +47,7 @@ db_lock = multiprocessing.Lock()
 
 def main():
     pool = multiprocessing.Pool()
+    click_random(icon_num)
 
     # Get projects to scrape.
     f_obj = open(DATA_PATH, encoding="utf8", newline='')
@@ -56,17 +59,18 @@ def main():
         # Get at maximum chunk_size number rows as a list per iteration.
         rows = get_rows(reader, DATABASE, chunk_size)
 
+        pool.map(scrape_write, rows)
         # Scraping complete since there aren't enough rows left to reach chunk_size.
         if len(rows) < chunk_size:
             Done = True
         if len(rows) == 0:
             continue
-
+        
         # Stop scraping for a period of time to not be blocked as a bot.
         total += chunk_size
         if total % (chunk_size * 10) == 0:
             logging.info("Changing server...\n")
-            # click_random(icon_num)
+            click_random(icon_num)
 
     f_obj.close()
     pool.close()
@@ -76,11 +80,15 @@ def main():
 
 def test_extract_campaign_data():
     # Testing code.
-    file_paths = [#"https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students", 
+    file_paths = [
+                #"https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students", 
                   "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition",
                   "https://www.kickstarter.com/projects/lucid-dreamers/empires-of-sorcery",
                   "https://www.kickstarter.com/projects/larianstudios/divinity-original-sin-the-board-game",
-                  "https://www.kickstarter.com/projects/120302834/deep-rock-galactic-space-rig-and-biome-expansions",]
+                  "https://www.kickstarter.com/projects/120302834/deep-rock-galactic-space-rig-and-biome-expansions",
+                  "https://www.kickstarter.com/projects/ogglio/2023-olive-oil-harvest/",
+                  "https://www.kickstarter.com/projects/artorder/2018-snowman-greeting-card-collection/",
+                  ]
     pool = multiprocessing.Pool()
     data = pool.map(extract_campaign_data, file_paths)
     pool.close()
@@ -214,7 +222,7 @@ def get_str(string, extra):
 
 def get_digits(string, conv="float"):
     """Returns only digits from string as a single int/float. Default
-    is float.
+    is float. Returns None if no digits are found.
     
     Inputs: 
     string[str] - Any string.
@@ -231,7 +239,7 @@ def get_digits(string, conv="float"):
     else:
         return None
 
-def get_pledge_data(bs4_tag, index=0):
+def get_pledge_data(bs4_tag, index=0, conversion_rate=1):
     """Returns a dict of data from a kickstarter pledge li bs4 tag.
     Dict will contain:
     rd_id: Pledge unique id.
@@ -248,58 +256,69 @@ def get_pledge_data(bs4_tag, index=0):
 
     Inputs:
     bs4_tag [bs4.element.Tag] - A tag of a kickstarter Pledge.
-    Index [int] - Optional. The index of the current pledge. Has a default value of 0."""
+    Index [int] - Optional. The index of the current pledge. Has a default value of 0.
+    conversion_rate [int] - Conversion rate to use for converting pledge price. 1 by default."""
     pledge_data = {}
     i = str(index)
 
     pledge_data['rd_id_' + i] = bs4_tag['id']
     pledge_data['rd_title_' + i] = bs4_tag.select_one('[class="support-700 semibold type-18 m0 mr1 text-wrap-balance break-word"]').getText().strip()
     
-    # pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('span[class="pledge__currency-conversion"] > span').getText())
+    pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('[class="support-700 type-18 m0 shrink0"]').getText()) * conversion_rate
 
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('[class="type-14 lh20px mb0 support-700 text-prewrap"]').getText()
+
+    # Get container with included items for pledge and then extract text from
+    # every item.
+    rd_list = []
+    item_list_elem = bs4_tag.select_one('[class="flex flex-column gap1"]')
+    # No included items. e.g. https://www.kickstarter.com/projects/lucid-dreamers/empires-of-sorcery/rewards
+    if item_list_elem != None:
+        item_elems = item_list_elem.select('[class="border border-support-700 mb3 py3 px3 radius4px clip"]')
+        for item_elem in item_elems:
+            item = item_elem.getText()
+            if "Quantity: 1" in item:
+                item = item.replace("Quantity: 1", "")
+            else:
+                # In case of quantity > 1, move quantity to the front.
+                rem_str = "Quantity: "
+                rem_ind = item.find(rem_str)
+                item = item[rem_ind + len(rem_str):] + " " + item[:rem_ind]
+
+            rd_list.append(item)
     
-    # Rewards list. If it does not exist, return empty string.
-    # rd_list = [elem.getText().replace('\n', '') for elem in bs4_tag.select('li[class="list-disc"]')]
-    # if len(rd_list) == 0:
-    #     pledge_data['rd_list_' + i] = MISSING
-    # else:
-    #     pledge_data['rd_list_' + i] = rd_list
-    
+    pledge_data['rd_list_' + i] = rd_list
+
     pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('time[datetime]')['datetime']
 
-    # Below elem can contain estimated date of delivery and the shipping location (optional).
-    # pledge_detail_elems = bs4_tag.select('span[class="pledge__detail-info"]')
-    # # It has the shipping location.
-    # if len(pledge_detail_elems) > 1:
-    #     pledge_data['rd_shipping_location_' + i] = pledge_detail_elems[1].getText()
-    # # No shipping location.
-    # else:
-    #     pledge_data['rd_shipping_location_' + i] = MISSING
+    shipping_location_elem = bs4_tag.select_one('div[class="flex1"] > div[class="type-14 lh20px mb0 support-700"]')
+    if shipping_location_elem != None:
+        pledge_data['rd_shipping_location_' + i] = shipping_location_elem.getText()
+    else:
+        pledge_data['rd_shipping_location_' + i] = MISSING
 
-    # try:
-    #     rd_backers = get_digits(bs4_tag.select_one('span[class="pledge__backer-count"]').getText())
-    # # Reward has a limit so it has a different class value.
-    # except AttributeError:
-    #     rd_backers = get_digits(bs4_tag.select_one('span[class="block pledge__backer-count"]').getText())
-    # finally:
-    #     pledge_data["rd_backers_" + i] = rd_backers
+    rd_backers_elem = bs4_tag.select_one("span[aria-label]")
+    if rd_backers_elem != None:
+        rd_backers = int(rd_backers_elem.getText())
+    else:
+        rd_backers = MISSING
+    pledge_data["rd_backers_" + i] = rd_backers
 
-    # rd_limit_elem = bs4_tag.select_one('span[class="pledge__limit"]')
-    # try:
-    #     rd_limit = get_digits(rd_limit_elem.getText().split()[-1])
-    # except:
-    #     rd_limit = MISSING
-    # pledge_data["rd_limit_" + i] = rd_limit
+    # Check if h3 tag with text "Limited quantity" exists. If so, get sibling
+    # tag which contains the reward limit.
+    rd_limit_sib_elem = bs4_tag.select_one('h3:-soup-contains("Limited quantity")')
+    if rd_limit_sib_elem != None:
+        rd_limit_digits = get_digits(rd_limit_sib_elem.find_next_sibling().getText().split()[-1], "int")
+        # Must have "None left" as value since get_digits failed. E.g. of reward page: https://www.kickstarter.com/projects/artorder/2018-snowman-greeting-card-collection/rewards
+        if rd_limit_digits == None:
+            rd_limit = rd_backers
+        else:
+            rd_limit = rd_limit_digits
+    else:
+        rd_limit = MISSING
+    pledge_data["rd_limit_" + i] = rd_limit
 
-    # # Below tag is there only for pledges which have reached their limit.
-    # # These pledges don't show the limit so their limit = num of backers 
-    # rd_gone_elem = bs4_tag.select_one('span[class="pledge__limit pledge__limit--all-gone mr2"]')
-    # if rd_gone_elem != None:
-    #     pledge_data["rd_limit_" + i] = rd_backers
-    #     pledge_data["rd_gone_" + i] = 1
-    # else:
-    #     pledge_data["rd_gone_" + i] = 0
+    pledge_data["rd_gone_" + i] = int(rd_limit == rd_backers)
 
     return pledge_data
 
@@ -360,7 +379,7 @@ def get_live_soup(link, given_driver=None, page=None):
             elems.extend(driver.find_elements(By.CSS_SELECTOR, 'a[data-modal-title="About the creator"]'))
             elems.extend(driver.find_elements(By.CSS_SELECTOR, 'div[class="do-not-visually-track text-left type-16 bold clip text-ellipsis"]'))
             if len(elems) > 0:
-                elems[0].click()        
+                elems[0].click()
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
@@ -377,7 +396,15 @@ def get_live_soup(link, given_driver=None, page=None):
         driver.quit()
         return
 
-    time.sleep(5)
+    # Wait for rewards to load.
+    if page == "rewards":
+        max_timeout = 15
+        try:
+            element_present = EC.presence_of_element_located((By.CSS_SELECTOR, 'article[data-test-id]'))
+            WebDriverWait(driver, max_timeout).until(element_present)
+        except TimeoutException:
+            print("Timed out waiting for page to load")
+
     soup = BeautifulSoup(driver.page_source, "lxml")
 
     if given_driver == None:
@@ -385,18 +412,18 @@ def get_live_soup(link, given_driver=None, page=None):
 
     return soup
 
-def extract_campaign_data(path):
+def extract_campaign_data(path, conversion_rate=1):
     """Extracts data from a kickstarter campaign page and returns
     it in a dictionary. 
     
     Inputs:
     path [str] - Path to html file.
-    is_link [boolean] - True if path is a link and False otherwise. False by default."""
+    conversion_rate[int] - Conversion rate to use for pledges. 1 by default."""
     data = {"rd_project_link": path}
     
     driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
     campaign_soup = get_live_soup(path, given_driver=driver, page="campaign")
-    reward_soup = get_live_soup(path + "/rewards", given_driver=driver)
+    reward_soup = get_live_soup(path + "/rewards", given_driver=driver, page="rewards")
     driver.quit()
 
     # Prepare str for getting date and time. 
@@ -602,14 +629,14 @@ def extract_campaign_data(path):
     data["cv_num_rewards"] = len(all_pledge_elems)
 
     for i, pledge_elem in enumerate(all_pledge_elems):
-        data |= get_pledge_data(pledge_elem, i)
+        data |= get_pledge_data(pledge_elem, i, conversion_rate)
 
     return data
 
 def scrape_write(row):
     """Takes a row of data, scrapes additional data from url and adds full data to database."""
     logging.info(f"Started scraping {row['url']}...")
-    project_data = extract_campaign_data(row["url"])
+    project_data = extract_campaign_data(row["url"], row["conversion_rate"])
 
     # Merge data.
     start_date = datetime.strptime(row["created_date"], "%Y-%m-%d")
@@ -628,11 +655,11 @@ def scrape_write(row):
     project_data["status"] = row["state"]
     project_data["original_curr_symbol"] = row["original_currency"]
     project_data["converted_curr_symbol"] = row["converted_currency"]   
-    project_data["conversion_rate"] = row["conversion_rate"]
-    project_data["goal"] = float(row["goal"]) / row["conversion_rate"]
-    project_data["converted_goal"] = row["goal"]
-    project_data["pledged"] = float(row["pledged"]) / row["conversion_rate"]
-    project_data["converted_pledged"] = row["pledged"]
+    project_data["conversion_rate"] = float(row["conversion_rate"])
+    project_data["goal"] = float(row["goal"]) / project_data["conversion_rate"]
+    project_data["converted_goal"] = float(row["goal"])
+    project_data["pledged"] = float(row["pledged"]) / project_data["conversion_rate"]
+    project_data["converted_pledged"] = float(row["pledged"])
 
     project_data["pwl"] = row["pwl"]
     project_data["make100"] = MISSING
@@ -659,8 +686,3 @@ if __name__ == "__main__":
         main()
     else:
         test_extract_campaign_data()
-
-# row = {"name": "Pokeballoons: Evolution Edition!", "url": "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition", "creator_id": 1000473597, "blurb": "A new addition to the Pokeballoons series featuring your favorite evolutions. Gotta collect 'em all!", "original_currency": "USD", "converted_currency": "USD", "conversion_rate": 1.0, 
-#        "goal": 100.0, "pledged": "1304.0", "backers": 26, "state": "Successful", "pwl": 0, "location": "Dallas, TX", "subcategory": "Illustration", "category": "Art", "created_date": "2023-03-13", "launched_date": "2023-03-18", "deadline_date": "2023-04-07"}
-
-# scrape_write(row)
