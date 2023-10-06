@@ -78,8 +78,14 @@ def test_extract_campaign_data():
     # Testing code.
     file_paths = [#"https://www.kickstarter.com/projects/petersand/manylabs-sensors-for-students", 
                   "https://www.kickstarter.com/projects/hellodawnco/pokeballoons-evolution-edition",
-                  "https://www.kickstarter.com/projects/lucid-dreamers/empires-of-sorcery",]
-    data = [extract_campaign_data(file_path) for file_path in file_paths]
+                  "https://www.kickstarter.com/projects/lucid-dreamers/empires-of-sorcery",
+                  "https://www.kickstarter.com/projects/larianstudios/divinity-original-sin-the-board-game",
+                  "https://www.kickstarter.com/projects/120302834/deep-rock-galactic-space-rig-and-biome-expansions",]
+    pool = multiprocessing.Pool()
+    data = pool.map(extract_campaign_data, file_paths)
+    pool.close()
+    pool.join()
+
     df = pd.DataFrame(data)
     df.to_csv('test.csv', index = False)
 
@@ -440,7 +446,7 @@ def extract_campaign_data(path):
         verified_identity = project_data['verifiedIdentity']
     else:
         verified_identity_elem = campaign_soup.select_one('span[class="identity_name"]')
-        verified_identity = verified_identity_elem.getText() if verified_identity_elem != None else MISSING
+        verified_identity = verified_identity_elem.getText().strip() if verified_identity_elem != None else MISSING
     data['verified_identity'] = verified_identity  
 
     # Status of campaign.
@@ -456,7 +462,7 @@ def extract_campaign_data(path):
     if project_data:
         collab_list = project_data['collaborators']['edges']
         for collab in collab_list:
-            collaborators.append((collab['node']['name'], collab['node']['rd_project_link'], collab['title']))
+            collaborators.append((collab['node']['name'], collab['node']['url'], collab['title']))
     else:
         collaborators = ""
     data["collaborators"] = collaborators
@@ -546,7 +552,7 @@ def extract_campaign_data(path):
         else:
             num_backed = project_data['creator']['backingsCount']
 
-    if not project_data:
+    if not project_data and created_backed_elem != None:
             digits = get_digits(backed_text, "int")
             if digits != None:
                 num_backed = digits
