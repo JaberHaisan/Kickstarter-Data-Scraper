@@ -5,7 +5,6 @@ import logging
 import time
 import json
 import winsound
-import random
 import sqlite3
 import os
 import csv
@@ -288,9 +287,13 @@ def get_pledge_data(bs4_tag, index=0, conversion_rate=1):
 
             rd_list.append(item)
     
-    pledge_data['rd_list_' + i] = rd_list
+    pledge_data['rd_list_' + i] = json.dumps(rd_list)
 
-    pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('time[datetime]')['datetime']
+    delivery_date_elem = bs4_tag.select_one('time[datetime]')
+    if delivery_date_elem != None:
+        pledge_data['rd_delivery_date_' + i] = bs4_tag.select_one('time[datetime]')['datetime']
+    else:
+        pledge_data['rd_delivery_date_' + i] = MISSING
 
     shipping_location_elem = bs4_tag.select_one('div[class="flex1"] > div[class="type-14 lh20px mb0 support-700"]')
     if shipping_location_elem != None:
@@ -493,7 +496,7 @@ def extract_campaign_data(path, conversion_rate=1):
             collaborators.append((collab['node']['name'], collab['node']['url'], collab['title']))
     else:
         collaborators = ""
-    data["collaborators"] = collaborators
+    data["collaborators"] = json.dumps(collaborators)
 
     # Default values. prj.db
     original_curr_symbol = converted_curr_symbol = MISSING
@@ -668,7 +671,6 @@ def scrape_write(row):
     project_data["subcategory"] = row["subcategory"]
     project_data["location"] = row["location"]
 
-    print(project_data)
     with db_lock:
         con = create_new_projects_db(DATABASE)
         cur = con.cursor()
