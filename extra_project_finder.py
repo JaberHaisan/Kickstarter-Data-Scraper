@@ -120,7 +120,7 @@ def create_project_db(path):
                 converted_currency TEXT,
                 conversion_rate REAL,
                 goal REAL,
-                pledeged REAL,
+                pledged REAL,
                 backers INTEGER,
                 state TEXT,
                 pwl INTEGER,
