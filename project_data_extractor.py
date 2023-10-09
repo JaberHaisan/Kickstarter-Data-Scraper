@@ -87,6 +87,7 @@ def test_extract_campaign_data():
                   "https://www.kickstarter.com/projects/120302834/deep-rock-galactic-space-rig-and-biome-expansions",
                   "https://www.kickstarter.com/projects/ogglio/2023-olive-oil-harvest/",
                   "https://www.kickstarter.com/projects/artorder/2018-snowman-greeting-card-collection/",
+                  "https://www.kickstarter.com/projects/732431717/photo-time-machine",
                   ]
 
     pool = multiprocessing.Pool()
@@ -103,7 +104,8 @@ def get_rows(reader, database, n_rows):
     # Get already scraped urls.
     con = create_new_projects_db(database)
     cur = con.cursor()
-    scraped_urls = set(url[0] for url in cur.execute("SELECT rd_project_link FROM projects;"))
+    scraped_urls = set(url[0] for url in cur.execute("SELECT rd_project_link FROM projects;")) 
+    scraped_urls |= set(url[0] for url in cur.execute("SELECT url FROM problem_projects;")) 
     con.close()
     
     # Get n rows which haven't been scraped if there are enough remaining rows.
@@ -209,6 +211,28 @@ def create_new_projects_db(database):
     table_creation_sql = table_creation_sql[:-1] + "\n)"
     cur.execute(table_creation_sql)
 
+    # For hidden projects mainly.
+    cur.execute("""CREATE TABLE IF NOT EXISTS problem_projects(
+        name TEXT, 
+        url TEXT UNIQUE, 
+        creator_id TEXT, 
+        blurb TEXT, 
+        original_currency TEXT, 
+        converted_currency TEXT, 
+        conversion_rate REAL, 
+        goal REAL, 
+        pledged REAL,   
+        backers INTEGER,
+        state TEXT, 
+        pwl INTEGER, 
+        location TEXT, 
+        subcategory TEXT, 
+        category TEXT, 
+        created_date TEXT,       
+        launched_date TEXT, 
+        deadline_date TEXT
+        )""")
+
     con.commit()
     return con
 
@@ -266,7 +290,12 @@ def get_pledge_data(bs4_tag, index=0, conversion_rate=1):
     
     pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('[class="support-700 type-18 m0 shrink0"]').getText(), "int") * float(conversion_rate)
 
-    pledge_data['rd_desc_' + i] = bs4_tag.select_one('[class="type-14 lh20px mb0 support-700 text-prewrap"]').getText()
+    # Description may not exist for some pledges e.g. https://www.kickstarter.com/projects/davidgfores/tiny-creatures-alphabet-el-abc-de-las-criaturas-abominables/rewards
+    desc_elem = bs4_tag.select_one('[class="type-14 lh20px mb0 support-700 text-prewrap"]')
+    if desc_elem != None:
+        pledge_data['rd_desc_' + i] = desc_elem.getText()
+    else:
+        pledge_data['rd_desc_' + i] = ""
 
     # Get container with included items for pledge and then extract text from
     # every item.
@@ -379,25 +408,32 @@ def get_live_soup(link, given_driver=None, page=None):
     # There are two possible alternate selectors. One for successful campaigns and the
     # other for other campaigns. Try finding both and click whichever that exists.
     if page == "campaign":
-            # Reload page till required elems loads in page.
-            while True:
+            # Try reloading page at most 2 times if required elems aren't found.
+            tries = 2
+            while tries != 0:
                 elems = []
                 # Successful campaigns.
                 elems.extend(driver.find_elements(By.CSS_SELECTOR, 'a[data-modal-title="About the creator"]'))
                 # Other campaigns.
                 elems.extend(driver.find_elements(By.CSS_SELECTOR, 'div[class="do-not-visually-track text-left type-16 bold clip text-ellipsis"]'))
-                if len(elems) > 0:
-                    try:
-                        elems[0].click()
-                        time.sleep(5)
-                    except Exception:
-                        driver.refresh()
-                        continue
-                    else:
-                        break
+                try:
+                    elems[0].click()
+                    time.sleep(5)
+                except Exception:
+                    driver.refresh()
+                    tries -= 1
+                    continue
+                else:
+                    break
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
+    # Hidden project. For e.g. https://www.kickstarter.com/projects/732431717/photo-time-machine
+    hidden_elem = soup.select_one('div[id="hidden_project"]')
+    if hidden_elem != None:
+        driver.quit()
+        return
+    
     # If there is a capcha, Beep and sleep.
     capcha_elem = soup.select_one('div[id="px-captcha"]')
     if capcha_elem != None:
@@ -446,6 +482,11 @@ def extract_campaign_data(path, conversion_rate=1):
     
     driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH, user_multi_procs=True)
     campaign_soup = get_live_soup(path, given_driver=driver, page="campaign")
+
+    # There is an issue with the campaign.
+    if campaign_soup == None:
+        return
+    
     reward_soup = get_live_soup(path + "/rewards", given_driver=driver, page="rewards")
     driver.quit()
 
@@ -672,45 +713,52 @@ def scrape_write(row):
     logging.info(f"Started scraping {row['url']}...")
     project_data = extract_campaign_data(row["url"], row["conversion_rate"])
 
-    # Merge data.
-    start_date = datetime.strptime(row["created_date"], "%Y-%m-%d")
-    end_date = datetime.strptime(row["deadline_date"], "%Y-%m-%d")
-    duration = (end_date - start_date).days
+    if project_data != None:
+        # Merge data.
+        start_date = datetime.strptime(row["created_date"], "%Y-%m-%d")
+        end_date = datetime.strptime(row["deadline_date"], "%Y-%m-%d")
+        duration = (end_date - start_date).days
 
-    project_data["time_interval"] = duration
-    project_data["cv_startday"] = start_date.day
-    project_data["cv_startmonth"] = start_date.month
-    project_data["cv_startyear"] = start_date.year
-    project_data["cv_endday"] = end_date.day
-    project_data["cv_endmonth"] = end_date.month
-    project_data["cv_endyear"] = end_date.year
-    project_data["cv_duration"] = duration
+        project_data["time_interval"] = duration
+        project_data["cv_startday"] = start_date.day
+        project_data["cv_startmonth"] = start_date.month
+        project_data["cv_startyear"] = start_date.year
+        project_data["cv_endday"] = end_date.day
+        project_data["cv_endmonth"] = end_date.month
+        project_data["cv_endyear"] = end_date.year
+        project_data["cv_duration"] = duration
 
-    project_data["status"] = row["state"]
-    project_data["original_curr_symbol"] = row["original_currency"]
-    project_data["converted_curr_symbol"] = row["converted_currency"]   
-    project_data["conversion_rate"] = float(row["conversion_rate"])
-    project_data["goal"] = float(row["goal"]) / project_data["conversion_rate"]
-    project_data["converted_goal"] = float(row["goal"])
-    project_data["pledged"] = float(row["pledged"]) / project_data["conversion_rate"]
-    project_data["converted_pledged"] = float(row["pledged"])
+        project_data["status"] = row["state"]
+        project_data["original_curr_symbol"] = row["original_currency"]
+        project_data["converted_curr_symbol"] = row["converted_currency"]   
+        project_data["conversion_rate"] = float(row["conversion_rate"])
+        project_data["goal"] = float(row["goal"]) / project_data["conversion_rate"]
+        project_data["converted_goal"] = float(row["goal"])
+        project_data["pledged"] = float(row["pledged"]) / project_data["conversion_rate"]
+        project_data["converted_pledged"] = float(row["pledged"])
 
-    project_data["pwl"] = row["pwl"]
-    project_data["make100"] = MISSING
-    project_data["category"] = row["category"]
-    project_data["subcategory"] = row["subcategory"]
-    project_data["location"] = row["location"]
+        project_data["pwl"] = row["pwl"]
+        project_data["make100"] = MISSING
+        project_data["category"] = row["category"]
+        project_data["subcategory"] = row["subcategory"]
+        project_data["location"] = row["location"]
 
     with db_lock:
         con = create_new_projects_db(DATABASE)
         cur = con.cursor()
 
-        columns = ', '.join(project_data.keys())
-        placeholders = ', '.join('?' * len(project_data))
-        insert_command = "INSERT OR IGNORE INTO projects ({}) VALUES ({})".format(columns, placeholders)
-        cur.execute(insert_command, tuple(project_data.values()))
-        logging.info(f"Added {row['url']} to table...")
-        
+        if project_data != None:
+            columns = ', '.join(project_data.keys())
+            placeholders = ', '.join('?' * len(project_data))
+            insert_command = "INSERT OR IGNORE INTO projects ({}) VALUES ({})".format(columns, placeholders)
+            cur.execute(insert_command, tuple(project_data.values()))
+            logging.info(f"Added {row['url']} to table...")
+        else:
+            columns = ', '.join(row.keys())
+            placeholders = ', '.join('?' * len(row))
+            insert_command = "INSERT OR IGNORE INTO problem_projects ({}) VALUES ({})".format(columns, placeholders)           
+            cur.execute(insert_command, tuple(row.values()))
+
         con.commit()
         con.close()
 
