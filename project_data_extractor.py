@@ -150,7 +150,7 @@ def create_new_projects_db(database):
     CREATE TABLE IF NOT EXISTS projects (
         time_interval TEXT, 
         date_accessed TEXT, 
-        rd_project_link TEXT, 
+        rd_project_link TEXT UNIQUE, 
         project_id TEXT, 
         creator_id TEXT, 
         title TEXT, 
@@ -264,7 +264,7 @@ def get_pledge_data(bs4_tag, index=0, conversion_rate=1):
     pledge_data['rd_id_' + i] = bs4_tag['id']
     pledge_data['rd_title_' + i] = bs4_tag.select_one('[class="support-700 semibold type-18 m0 mr1 text-wrap-balance break-word"]').getText().strip()
     
-    pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('[class="support-700 type-18 m0 shrink0"]').getText()) * conversion_rate
+    pledge_data['rd_price_' + i] = get_digits(bs4_tag.select_one('[class="support-700 type-18 m0 shrink0"]').getText(), "int") * float(conversion_rate)
 
     pledge_data['rd_desc_' + i] = bs4_tag.select_one('[class="type-14 lh20px mb0 support-700 text-prewrap"]').getText()
 
@@ -378,12 +378,23 @@ def get_live_soup(link, given_driver=None, page=None):
     # Click creator page for page to load additional data if it is a campaign page.
     # There are two possible alternate selectors. One for successful campaigns and the
     # other for other campaigns. Try finding both and click whichever that exists.
-    elems = []
     if page == "campaign":
-            elems.extend(driver.find_elements(By.CSS_SELECTOR, 'a[data-modal-title="About the creator"]'))
-            elems.extend(driver.find_elements(By.CSS_SELECTOR, 'div[class="do-not-visually-track text-left type-16 bold clip text-ellipsis"]'))
-            if len(elems) > 0:
-                elems[0].click()
+            # Reload page till required elems loads in page.
+            while True:
+                elems = []
+                # Successful campaigns.
+                elems.extend(driver.find_elements(By.CSS_SELECTOR, 'a[data-modal-title="About the creator"]'))
+                # Other campaigns.
+                elems.extend(driver.find_elements(By.CSS_SELECTOR, 'div[class="do-not-visually-track text-left type-16 bold clip text-ellipsis"]'))
+                if len(elems) > 0:
+                    try:
+                        elems[0].click()
+                        time.sleep(5)
+                    except Exception:
+                        driver.refresh()
+                        continue
+                    else:
+                        break
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
@@ -402,12 +413,20 @@ def get_live_soup(link, given_driver=None, page=None):
 
     # Wait for rewards to load.
     if page == "rewards":
-        max_timeout = 15
-        try:
-            element_present = EC.presence_of_element_located((By.CSS_SELECTOR, 'article[data-test-id]'))
-            WebDriverWait(driver, max_timeout).until(element_present)
-        except TimeoutException:
-            print("Timed out waiting for page to load")
+        max_timeout = 10
+        # Try two times. Some campaigns don't have any rewards 
+        # and the page will keep loading forever e.g. https://www.kickstarter.com/projects/spencerclintonparker/dvd-cases-for-bissell-family-documentary/rewards
+        tries = 2
+        while tries != 0:
+            try:
+                element_present = EC.presence_of_element_located((By.CSS_SELECTOR, 'article[data-test-id]'))
+                WebDriverWait(driver, max_timeout).until(element_present)
+            except TimeoutException:
+                print(f"Timed out waiting for {link} to load. Refreshing...")
+                driver.refresh()
+                tries -= 1
+            else:
+                break
 
     soup = BeautifulSoup(driver.page_source, "lxml")
 
@@ -425,7 +444,7 @@ def extract_campaign_data(path, conversion_rate=1):
     conversion_rate[int] - Conversion rate to use for pledges. 1 by default."""
     data = {"rd_project_link": path}
     
-    driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH)
+    driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH, user_multi_procs=True)
     campaign_soup = get_live_soup(path, given_driver=driver, page="campaign")
     reward_soup = get_live_soup(path + "/rewards", given_driver=driver, page="rewards")
     driver.quit()
@@ -478,6 +497,10 @@ def extract_campaign_data(path, conversion_rate=1):
     else:
         verified_identity_elem = campaign_soup.select_one('span[class="identity_name"]')
         verified_identity = verified_identity_elem.getText().strip() if verified_identity_elem != None else MISSING
+
+        # Creators who verified their account don't have their name posted. e.g. https://www.kickstarter.com/projects/perry/video-chat-at-35000-feet
+        if verified_identity == "(name not available)":
+            verified_identity = ""
     data['verified_identity'] = verified_identity  
 
     # Status of campaign.
@@ -495,22 +518,29 @@ def extract_campaign_data(path, conversion_rate=1):
         for collab in collab_list:
             collaborators.append((collab['node']['name'], collab['node']['url'], collab['title']))
     else:
-        collaborators = ""
+        # Get past collaborators if available.
+        past_collab_elem = campaign_soup.select_one('p[class="col col-12"]')
+        if past_collab_elem != None:
+            for a_elem in past_collab_elem.select('a'):
+                # Past collaborators don't have titles.
+                collaborators.append((a_elem.getText(), "https://www.kickstarter.com/" + a_elem['href'], ""))
+
+        # Selector in case of single collaborator.
+        single_collab_elem = campaign_soup.select_one('[class="flag col col-4 mb3"] > div[class="flag-body"]')
+        if single_collab_elem != None:
+            a_elem = single_collab_elem.select_one('a')
+            collaborators.append((a_elem.getText(), "https://www.kickstarter.com/" + a_elem['href'], single_collab_elem.select_one('div').getText()))
+
     data["collaborators"] = json.dumps(collaborators)
 
     # Default values. prj.db
-    original_curr_symbol = converted_curr_symbol = MISSING
-    conversion_rate = 0
-    goal = converted_goal = MISSING
-    pledged = converted_pledged = MISSING
-
-    data["original_curr_symbol"] = original_curr_symbol
-    data["converted_curr_symbol"] = converted_curr_symbol   
-    data["conversion_rate"] = conversion_rate
-    data["goal"] = goal
-    data["converted_goal"] = converted_goal
-    data["pledged"] = pledged
-    data["converted_pledged"] = converted_pledged
+    data["original_curr_symbol"] = MISSING
+    data["converted_curr_symbol"] = MISSING   
+    data["conversion_rate"] = MISSING
+    data["goal"] = MISSING
+    data["converted_goal"] = MISSING
+    data["pledged"] = MISSING
+    data["converted_pledged"] = MISSING
 
     # Campaign start time.
     data["cv_startday"] = MISSING
@@ -677,7 +707,7 @@ def scrape_write(row):
 
         columns = ', '.join(project_data.keys())
         placeholders = ', '.join('?' * len(project_data))
-        insert_command = "INSERT INTO projects ({}) VALUES ({})".format(columns, placeholders)
+        insert_command = "INSERT OR IGNORE INTO projects ({}) VALUES ({})".format(columns, placeholders)
         cur.execute(insert_command, tuple(project_data.values()))
         logging.info(f"Added {row['url']} to table...")
         
