@@ -8,6 +8,7 @@ import winsound
 import sqlite3
 import os
 import csv
+import traceback 
 
 import undetected_chromedriver as uc
 from selenium.common.exceptions import TimeoutException
@@ -21,7 +22,7 @@ import pandas as pd
 # Settings.
 
 # Path to project data. Make sure to use raw strings or escape "\".
-DATA_PATH = r"D:\scraping_projects.csv"
+DATA_PATH = r"D:\scraping_projects_1.csv"
 # Output path.
 OUTPUT_PATH = r"D:\\"
 DATABASE = os.path.join(OUTPUT_PATH, "new_projects.db")
@@ -58,7 +59,19 @@ def main():
         # Get at maximum chunk_size number rows as a list per iteration.
         rows = get_rows(reader, DATABASE, chunk_size)
 
-        pool.map(scrape_write, rows)
+        try:
+            pool.map(scrape_write, rows)
+        except Exception:
+            logging.info(f"\nException -\n {traceback.format_exc()} \nRetrying...")
+
+            # Reopen reader so unscraped rows will get added in next iteration.
+            f_obj.close()
+            f_obj = open(DATA_PATH, encoding="utf8", newline='')
+            reader = csv.DictReader(f_obj)
+            
+            click_random(icon_num)
+            time.sleep(30)
+
         # Scraping complete since there aren't enough rows left to reach chunk_size.
         if len(rows) < chunk_size:
             Done = True
@@ -105,7 +118,7 @@ def get_rows(reader, database, n_rows):
     con = create_new_projects_db(database)
     cur = con.cursor()
     scraped_urls = set(url[0] for url in cur.execute("SELECT rd_project_link FROM projects;")) 
-    scraped_urls |= set(url[0] for url in cur.execute("SELECT url FROM problem_projects;")) 
+    scraped_urls |= set(url[0] for url in cur.execute("SELECT url FROM hidden_projects;")) 
     con.close()
     
     # Get n rows which haven't been scraped if there are enough remaining rows.
@@ -212,7 +225,7 @@ def create_new_projects_db(database):
     cur.execute(table_creation_sql)
 
     # For hidden projects mainly.
-    cur.execute("""CREATE TABLE IF NOT EXISTS problem_projects(
+    cur.execute("""CREATE TABLE IF NOT EXISTS hidden_projects(
         name TEXT, 
         url TEXT UNIQUE, 
         creator_id TEXT, 
@@ -480,15 +493,20 @@ def extract_campaign_data(path, conversion_rate=1):
     conversion_rate[int] - Conversion rate to use for pledges. 1 by default."""
     data = {"rd_project_link": path}
     
-    driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH, user_multi_procs=True)
-    campaign_soup = get_live_soup(path, given_driver=driver, page="campaign")
+    try:
+        driver = uc.Chrome(driver_executable_path=CHROMEDRIVER_PATH, user_multi_procs=True)
 
-    # There is an issue with the campaign.
-    if campaign_soup == None:
-        return
-    
-    reward_soup = get_live_soup(path + "/rewards", given_driver=driver, page="rewards")
-    driver.quit()
+        campaign_soup = get_live_soup(path, given_driver=driver, page="campaign")
+
+        # Campaign is hidden.
+        if campaign_soup == None:
+            return
+        reward_soup = get_live_soup(path + "/rewards", given_driver=driver, page="rewards")
+
+    except Exception:
+        raise Exception
+    finally:
+        driver.quit()
 
     # Prepare str for getting date and time. 
     path = datetime.now().strftime('_%Y%m%d-%H%M%S.html')
@@ -715,7 +733,7 @@ def scrape_write(row):
 
     if project_data != None:
         # Merge data.
-        start_date = datetime.strptime(row["created_date"], "%Y-%m-%d")
+        start_date = datetime.strptime(row["launched_date"], "%Y-%m-%d")
         end_date = datetime.strptime(row["deadline_date"], "%Y-%m-%d")
         duration = (end_date - start_date).days
 
@@ -756,7 +774,7 @@ def scrape_write(row):
         else:
             columns = ', '.join(row.keys())
             placeholders = ', '.join('?' * len(row))
-            insert_command = "INSERT OR IGNORE INTO problem_projects ({}) VALUES ({})".format(columns, placeholders)           
+            insert_command = "INSERT OR IGNORE INTO hidden_projects ({}) VALUES ({})".format(columns, placeholders)           
             cur.execute(insert_command, tuple(row.values()))
 
         con.commit()
